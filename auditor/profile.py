@@ -98,7 +98,7 @@ def _system_prompt() -> str:
     )
 
 
-def _pages_content_block(pages: list[PageData]) -> str:
+def _pages_content_block(pages: list[PageData], *, max_chars: int = 4000) -> str:
     lines = []
     for page in pages:
         lines.append(f"--- Página '{page.id}' ({page.type}) {page.url} ---")
@@ -109,14 +109,14 @@ def _pages_content_block(pages: list[PageData]) -> str:
             lines.append("Preços mencionados: " + " | ".join(page.prices))
         if page.contacts:
             lines.append("Contactos: " + str(page.contacts))
-        lines.append((page.main_text or "")[:1500])
+        lines.append((page.main_text or "")[:max_chars])
     return "\n".join(lines)
 
 
-async def extract_profile(llm: LLMClient, pages: list[PageData], *, model: str = "") -> SiteProfile:
+async def extract_profile(llm: LLMClient, pages: list[PageData], *, model: str = "", max_chars: int = 4000) -> SiteProfile:
     best_landing = pick_best_landing_page(pages)
     prompt = (
-        f"{wrap_site_content(_pages_content_block(pages))}\n\n"
+        f"{wrap_site_content(_pages_content_block(pages, max_chars=max_chars))}\n\n"
         + (f"A página sugerida como melhor landing page é '{best_landing.id}' ({best_landing.url}). " if best_landing else "")
         + "Usa o URL completo dessa página (ou outra mais adequada, se fizer mais sentido) em "
         "landing_page_url e pagina_destino. Devolve APENAS um objecto JSON com um campo por "

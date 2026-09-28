@@ -15,11 +15,15 @@ function countLabel(chars, limits) {
 
 function assetRow(item, limits = {}) {
   const label = countLabel(item.chars, limits);
-  const row = el("div", { class: "ad-row" }, [
+  const children = [
     el("div", { class: "ad-row__text" }, item.text),
     el("span", { class: `ad-row__count ${item.valid ? "is-ok" : "is-bad"}` }, label),
-    el("button", { class: "btn btn--ghost btn--sm copy-btn", onclick: async () => { (await copyToClipboard(item.text)) && showToast("Copiado."); } }, "Copiar"),
-  ]);
+  ];
+  if (item.lint?.length) {
+    children.push(el("span", { class: "ad-row__lint", title: item.lint.join("; ") }, "PT-PT ⚠"));
+  }
+  children.push(el("button", { class: "btn btn--ghost btn--sm copy-btn", onclick: async () => { (await copyToClipboard(item.text)) && showToast("Copiado."); } }, "Copiar"));
+  const row = el("div", { class: "ad-row" }, children);
   if (!item.valid && item.issues?.length) {
     row.title = item.issues.join("; ");
   }

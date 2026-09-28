@@ -9,7 +9,20 @@ owner_services:
 llm:
   backend: ollama
   ollama_url: "http://localhost:11434"
-  num_ctx: 8192
+  ollama_keep_alive: "30m"
+  num_ctx: 4096
+  # Limites do plano gratuito de APIs como o Gemini: pedidos por minuto (fila, nunca falha) e
+  # um limite diário aproximado (aviso, controlado nesta sessão - não é uma contagem exacta
+  # persistida entre reinícios do servidor).
+  requests_per_minute: 8
+  daily_limit: 450
+  # Texto de cada página enviado ao modelo, em caracteres (protege modelos pequenos/lentos).
+  max_page_chars: 4000
+  # Preset para quem usa a API gratuita do Gemini em vez do Ollama local (ver README). A
+  # chave NUNCA fica aqui - lê-se de AUDITOR_API_KEY no .env. Só é usado quando alguma tarefa
+  # (ou o backend global) está definida como "openai_compatible".
+  openai_compatible:
+    base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
   tasks:
     analise:
       backend: ollama

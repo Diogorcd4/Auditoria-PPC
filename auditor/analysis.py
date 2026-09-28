@@ -98,13 +98,15 @@ def _system_prompt_for_page(page_type: str) -> str:
         "para esta página. Analisa também os CTAs: clareza, posição na página, e se fazem "
         "sentido com a intenção da página.\n\n"
         "Regra mais importante: nunca inventes nada. Se o site não disser algo, o nível é "
-        "'ausente' e a evidência deve dizer 'não consta no site'. " + PT_PT_INSTRUCTION
+        "'ausente' e a evidência deve dizer 'não consta no site'. A evidência e a recomendação "
+        "de cada categoria devem ter no máximo 15 palavras cada uma, directas e concretas. "
+        + PT_PT_INSTRUCTION
     )
     emphasis = PAGE_TYPE_EMPHASIS.get(page_type)
     return f"{base}\n{emphasis}" if emphasis else base
 
 
-def _page_content_block(page: PageData) -> str:
+def _page_content_block(page: PageData, *, max_chars: int = 4000) -> str:
     lines = [
         f"URL: {page.url}",
         f"Tipo de página: {page.type}",
@@ -121,14 +123,14 @@ def _page_content_block(page: PageData) -> str:
         lines.append("Testemunhos: " + " | ".join(page.testimonials))
     if page.prices:
         lines.append("Preços mencionados: " + " | ".join(page.prices))
-    lines.append("Texto principal: " + (page.main_text or "(vazio)"))
+    lines.append("Texto principal: " + ((page.main_text or "(vazio)")[:max_chars]))
     return "\n".join(lines)
 
 
-async def analyze_page(llm: LLMClient, page: PageData, *, model: str = "") -> PageCommunication:
+async def analyze_page(llm: LLMClient, page: PageData, *, model: str = "", max_chars: int = 4000) -> PageCommunication:
     system = _system_prompt_for_page(page.type)
     prompt = (
-        f"{wrap_site_content(_page_content_block(page))}\n\n"
+        f"{wrap_site_content(_page_content_block(page, max_chars=max_chars))}\n\n"
         "Devolve APENAS um objecto JSON com os campos: page_id (usa exactamente "
         f'"{page.id}"), categories (um objecto com uma chave por categoria - '
         f"{', '.join(CATEGORY_KEYS)} - cada uma com level/evidence/recommendation), e "

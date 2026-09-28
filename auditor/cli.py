@@ -28,6 +28,7 @@ def audit(
     dry_run: bool = False,
     resume: bool = False,
     mock: bool = False,
+    fast: bool = typer.Option(False, help="Limita a 5 páginas, para testar rapidamente com modelos pequenos/lentos"),
 ) -> None:
     """Corre uma auditoria a partir da linha de comandos."""
     from auditor.pipeline import run_audit_sync
@@ -39,6 +40,7 @@ def audit(
         dry_run=dry_run,
         resume=resume,
         mock=mock,
+        fast=fast,
     )
 
 

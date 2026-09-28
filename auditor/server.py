@@ -1,18 +1,23 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import traceback
 from pathlib import Path
+from typing import Callable
 
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from auditor.ads import generate_all_ads
-from auditor.appconfig import build_llm_client, load_config, model_for_task, save_config
+from auditor.appconfig import GEMINI_BASE_URL, build_llm_client_for_task, load_config, model_for_task, save_config
 from auditor.crawler import PageData
+from auditor.llm.base import LLMClient
 from auditor.llm.mock import MockLLMClient
 from auditor.pipeline import (
     PipelineConfig,
+    _format_error,
     count_ads_assets,
     delete_saved_audit,
     load_history,
@@ -21,6 +26,8 @@ from auditor.pipeline import (
 )
 from auditor.prompts import PROMPTS_DIR, TEMPLATE_PLACEHOLDERS, list_template_names, load_template
 from auditor.prompts import select_templates_for_profile
+
+SSE_PING_INTERVAL = 15.0
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 DEMO_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "demo_audit.json"
@@ -39,21 +46,35 @@ def get_demo_audit() -> JSONResponse:
     return JSONResponse(data)
 
 
-def _get_llm_client(mock: bool):
-    """Kept as a separate, monkeypatchable seam: tests replace this to inject a MockLLMClient
-    preloaded with fixtures, without ever needing a real Ollama install to test the SSE wiring."""
+def _get_llm_factory(mock: bool) -> Callable[[str], LLMClient]:
+    """One client per task (secção D.12), cached for the lifetime of a single audit run so a
+    rate-limited backend (Gemini gratuito) keeps its request-timing state across every call
+    instead of resetting it on each step."""
     if mock:
-        return MockLLMClient()
-    return build_llm_client(load_config())
+        client = MockLLMClient()
+        return lambda _task: client
+
+    app_config = load_config()
+    cache: dict[str, LLMClient] = {}
+
+    def factory(task: str) -> LLMClient:
+        if task not in cache:
+            cache[task] = build_llm_client_for_task(app_config, task)
+        return cache[task]
+
+    return factory
 
 
-def _pipeline_config_from_app_config(url: str, max_pages: int, app_config: dict) -> PipelineConfig:
+def _pipeline_config_from_app_config(url: str, max_pages: int, app_config: dict, *, fast: bool = False) -> PipelineConfig:
+    if fast:
+        max_pages = min(max_pages, 5)
     return PipelineConfig(
         url=url,
         max_pages=max_pages,
         delay_seconds=app_config["crawl"]["delay_seconds"],
         respect_robots=app_config["crawl"]["respect_robots"],
         tracking_pages=app_config["tracking"]["pages"],
+        max_page_chars=app_config["llm"].get("max_page_chars", 4000),
         owner_services=list(app_config.get("owner_services", [])),
         model_for_task={task: model_for_task(app_config, task) for task in ("analise", "keywords", "perfil", "anuncios")},
         output_dir=OUTPUT_DIR,
@@ -67,21 +88,48 @@ def _pipeline_config_from_app_config(url: str, max_pages: int, app_config: dict)
 
 
 @app.get("/api/audit/stream")
-async def stream_audit(request: Request, url: str, max_pages: int = 25, mock: bool = False) -> StreamingResponse:
+async def stream_audit(request: Request, url: str, max_pages: int = 25, mock: bool = False, fast: bool = False) -> StreamingResponse:
     """SSE stream of PipelineEvent objects, one per pipeline step transition. The client
     (EventSource in app.js) stops listening simply by closing the connection - detected here
-    via `request.is_disconnected()` so a cancelled audit doesn't keep running server-side."""
+    via `request.is_disconnected()` so a cancelled audit doesn't keep running server-side.
+
+    A ": ping" comment line is sent whenever nothing else has happened for
+    SSE_PING_INTERVAL seconds - including while a single slow model call is in flight - so
+    browsers/proxies never decide the connection is dead mid-step (secção C.8). Any exception
+    that escapes run_pipeline itself (e.g. the browser failing to launch, before the per-step
+    try/except even starts) is still turned into one last error event instead of just
+    dropping the connection with no explanation (secção B.7).
+    """
     app_config = load_config()
-    llm = _get_llm_client(mock)
-    pipeline_config = _pipeline_config_from_app_config(url, max_pages, app_config)
+    llm_factory = _get_llm_factory(mock)
+    pipeline_config = _pipeline_config_from_app_config(url, max_pages, app_config, fast=fast)
 
     async def event_source():
-        async for event in run_pipeline(pipeline_config, llm):
+        agen = run_pipeline(pipeline_config, llm_factory).__aiter__()
+        while True:
             if await request.is_disconnected():
+                break
+            try:
+                event = await asyncio.wait_for(agen.__anext__(), timeout=SSE_PING_INTERVAL)
+            except asyncio.TimeoutError:
+                yield ": ping\n\n"
+                continue
+            except StopAsyncIteration:
+                break
+            except Exception as exc:  # noqa: BLE001 - never let the SSE stream just die silently
+                traceback.print_exc()
+                from auditor.pipeline import PipelineEvent
+
+                error_event = PipelineEvent(step="pipeline", status="error", error=_format_error(exc))
+                yield f"data: {error_event.model_dump_json()}\n\n"
                 break
             yield f"data: {event.model_dump_json()}\n\n"
 
-    return StreamingResponse(event_source(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_source(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 
 @app.post("/api/audit/regenerate-ads")
@@ -100,7 +148,7 @@ async def regenerate_ads(payload: dict = Body(...)) -> JSONResponse:
         raise HTTPException(status_code=400, detail=f"'pages' inválido: {exc}") from None
 
     app_config = load_config()
-    llm = _get_llm_client(bool(payload.get("mock", False)))
+    llm = MockLLMClient() if payload.get("mock", False) else build_llm_client_for_task(app_config, "anuncios")
     templates = select_templates_for_profile(profile["business_model"]["value"], profile.get("conteudo_forte", False))
     model = model_for_task(app_config, "anuncios")
 
@@ -158,6 +206,29 @@ async def test_ollama(ollama_url: str = "") -> JSONResponse:
     reachable = await client.health_check()
     models = await client.list_models() if reachable else []
     return JSONResponse({"reachable": reachable, "models": models})
+
+
+@app.get("/api/settings/test-openai-compatible")
+async def test_openai_compatible(base_url: str = "") -> JSONResponse:
+    """Used by the "Gemini gratuito" preset button in Definições: checks the key from .env
+    against the given (or default Gemini) base_url, and suggests the first Flash-Lite model
+    it finds (secção D.17). The API key itself never leaves the server."""
+    from auditor.appconfig import get_api_key
+    from auditor.llm import OpenAICompatClient
+
+    url = base_url or GEMINI_BASE_URL
+    api_key = get_api_key()
+    if not api_key:
+        return JSONResponse({"reachable": False, "models": [], "suggested_model": None, "detail": "AUDITOR_API_KEY não está definida no ficheiro .env."})
+
+    client = OpenAICompatClient(base_url=url, api_key=api_key)
+    try:
+        models = await client.list_models()
+    except Exception as exc:  # noqa: BLE001 - surfaced to the UI, not a 500
+        return JSONResponse({"reachable": False, "models": [], "suggested_model": None, "detail": _format_error(exc)})
+
+    suggested = next((m for m in models if "flash-lite" in m.lower()), None) or next((m for m in models if "flash" in m.lower()), None)
+    return JSONResponse({"reachable": True, "models": models, "suggested_model": suggested})
 
 
 @app.get("/api/prompts")

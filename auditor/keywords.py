@@ -58,12 +58,12 @@ def derive_seed_terms(pages: list[PageData], *, max_seeds: int = 8) -> list[str]
     return list(candidates.keys())[:max_seeds]
 
 
-async def fetch_autocomplete(client: httpx.AsyncClient, query: str, *, hl: str = "pt-PT", gl: str = "pt") -> list[str]:
+async def fetch_autocomplete(client: httpx.AsyncClient, query: str, *, hl: str = "pt-PT", gl: str = "pt", timeout: float = 10.0) -> list[str]:
     try:
         resp = await client.get(
             "https://www.google.com/complete/search",
             params={"client": "firefox", "hl": hl, "gl": gl, "q": query},
-            timeout=8.0,
+            timeout=timeout,
         )
         resp.raise_for_status()
         data = resp.json()
@@ -100,6 +100,7 @@ async def fetch_observed_terms(
             if cache_file.exists():
                 suggestions = json.loads(cache_file.read_text(encoding="utf-8"))
             else:
+                print(f"[termos] pedido Autocomplete: '{query}'")
                 suggestions = await fetch_autocomplete(client, query)
                 cache_file.write_text(json.dumps(suggestions, ensure_ascii=False), encoding="utf-8")
                 if delay_seconds:
@@ -175,15 +176,55 @@ async def build_keywords(
     cache_dir: Path | str = ".cache/keywords",
     use_alphabet: bool = True,
     delay_seconds: float = 0.3,
+    overall_timeout: float = 120.0,
 ) -> dict:
+    """The observed (Google Autocomplete) and inferred (LLM) layers fail independently
+    (secção B.6): a blocked/slow Autocomplete never takes down the inferred layer and
+    vice-versa. The whole step only raises if BOTH layers come back empty."""
     seeds = derive_seed_terms(pages)
-    raw_observed = await fetch_observed_terms(http_client, seeds, city=city, cache_dir=cache_dir, use_alphabet=use_alphabet, delay_seconds=delay_seconds)
-    synthesis = await infer_keywords_synthesis(llm, seeds=seeds, observed=raw_observed, pages=pages, model=model)
+    print(f"[termos] sementes: {seeds}")
 
-    return {
+    raw_observed: list[str] = []
+    observed_warning: Optional[str] = None
+    try:
+        raw_observed = await asyncio.wait_for(
+            fetch_observed_terms(http_client, seeds, city=city, cache_dir=cache_dir, use_alphabet=use_alphabet, delay_seconds=delay_seconds),
+            timeout=overall_timeout,
+        )
+        print(f"[termos] {len(raw_observed)} termos observados (Google Autocomplete).")
+    except asyncio.TimeoutError:
+        observed_warning = f"A pesquisa de termos observados excedeu {overall_timeout:.0f}s e foi interrompida; a continuar só com termos inferidos."
+        print(f"[termos] {observed_warning}")
+    except Exception as exc:  # noqa: BLE001 - autocomplete is best-effort, never fatal on its own
+        observed_warning = f"Não foi possível obter termos observados (Google Autocomplete): {exc}"
+        print(f"[termos] {observed_warning}")
+
+    print("[termos] a pedir a síntese inferida ao modelo…")
+    inferred: dict[str, list[str]] = {key: [] for key in InferredKeywords.model_fields}
+    gaps: list[str] = []
+    negatives: list[str] = []
+    inferred_warning: Optional[str] = None
+    try:
+        synthesis = await infer_keywords_synthesis(llm, seeds=seeds, observed=raw_observed, pages=pages, model=model)
+        inferred = synthesis.inferred.model_dump()
+        gaps = synthesis.gaps
+        negatives = synthesis.negatives
+        print("[termos] síntese concluída.")
+    except Exception as exc:  # noqa: BLE001 - fall back to the observed layer alone
+        inferred_warning = f"Não foi possível agrupar os termos com IA: {exc}"
+        print(f"[termos] {inferred_warning}")
+
+    warnings = [w for w in (observed_warning, inferred_warning) if w]
+    if not raw_observed and not any(inferred.values()):
+        raise RuntimeError("Não foi possível obter termos observados nem inferidos. " + " ".join(warnings))
+
+    result = {
         "observed": [{"term": term, "stage": heuristic_stage(term)} for term in raw_observed],
-        "inferred": synthesis.inferred.model_dump(),
-        "gaps": synthesis.gaps,
-        "negatives": synthesis.negatives,
+        "inferred": inferred,
+        "gaps": gaps,
+        "negatives": negatives,
         "note": NOTE_TEXT,
     }
+    if warnings:
+        result["warnings"] = warnings
+    return result

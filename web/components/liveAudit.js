@@ -29,7 +29,7 @@ function renderStepsBar(stepStates) {
   );
 }
 
-export function runLiveAudit(root, url, { mock = false } = {}) {
+export function runLiveAudit(root, url, { mock = false, retriesLeft = 1 } = {}) {
   root.innerHTML = "";
   const stepStates = {};
 
@@ -76,6 +76,10 @@ export function runLiveAudit(root, url, { mock = false } = {}) {
 
     if (payload.status === "running") {
       logWrap.appendChild(el("div", { class: "card", id: logId }, `A processar: ${label}…`));
+    } else if (payload.status === "progress") {
+      const message = payload.message ? `${label}: ${payload.message}` : `A processar: ${label}…`;
+      if (existing) existing.textContent = message;
+      else logWrap.appendChild(el("div", { class: "card", id: logId }, message));
     } else if (payload.status === "done") {
       const message = `${label} concluído em ${payload.duration_seconds.toFixed(1)}s.`;
       if (existing) existing.textContent = message;
@@ -87,18 +91,25 @@ export function runLiveAudit(root, url, { mock = false } = {}) {
       }
     } else if (payload.status === "error") {
       const message = `${label}: não foi possível concluir — ${payload.error}`;
-      if (existing) {
-        existing.textContent = message;
-        existing.classList.add("error-card");
-      } else {
-        logWrap.appendChild(el("div", { class: "error-card", id: logId }, el("span", { class: "error-card__msg" }, message)));
-      }
+      const retryBtn = el("button", { class: "btn btn--ghost btn--sm" }, "Tentar de novo");
+      retryBtn.addEventListener("click", () => {
+        close();
+        runLiveAudit(root, url, { mock });
+      });
+      const errorCard = el("div", { class: "error-card", id: logId }, [el("span", { class: "error-card__msg" }, message), retryBtn]);
+      if (existing) existing.replaceWith(errorCard);
+      else logWrap.appendChild(errorCard);
     }
   };
 
   source.onerror = () => {
     if (closed) return;
     close();
+    if (retriesLeft > 0) {
+      logWrap.appendChild(el("div", { class: "card" }, "Ligação ao servidor perdida — a tentar reconectar…"));
+      setTimeout(() => runLiveAudit(root, url, { mock, retriesLeft: retriesLeft - 1 }), 1500);
+      return;
+    }
     renderErrorCard(root, "A ligação ao servidor foi perdida durante a auditoria.", () => runLiveAudit(root, url, { mock }));
   };
 }

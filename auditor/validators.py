@@ -28,6 +28,12 @@ BRAZILIAN_LINT_TERMS: dict[str, str] = {
 }
 _BRAZILIAN_LINT_TERMS = {k: v for k, v in BRAZILIAN_LINT_TERMS.items() if v}
 
+# "seu"/"sua" without a preceding article ("o"/"a") is the common PT-BR pattern (PT-BR drops
+# the article before possessives: "seu carro" vs PT-PT "o seu carro"). Flagging the bare word
+# everywhere would swamp normal PT-PT copy in false positives, so this only fires when there
+# is no "o "/"a " right before it.
+BARE_POSSESSIVE_RE = re.compile(r"(?<![oOaA] )\b(seu|sua)\b", re.IGNORECASE)
+
 
 class AssetCheck(BaseModel):
     text: str
@@ -56,6 +62,11 @@ def lint_pt_pt(text: str) -> list[str]:
     for term, message in _BRAZILIAN_LINT_TERMS.items():
         if re.search(rf"\b{re.escape(term)}\b", lower):
             issues.append(f'"{term}": {message}')
+    match = BARE_POSSESSIVE_RE.search(text)
+    if match:
+        word = match.group(1)
+        article = "o" if word.lower() == "seu" else "a"
+        issues.append(f'"{word}" sem artigo soa a PT-BR; em PT-PT prefira "{article} {word.lower()}"')
     return issues
 
 

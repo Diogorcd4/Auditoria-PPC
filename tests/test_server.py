@@ -75,7 +75,7 @@ async def test_static_index_html_is_served(client):
 @pytest.mark.asyncio
 async def test_stream_audit_emits_sse_events_in_order(monkeypatch, client):
     monkeypatch.setattr(server_module, "run_pipeline", _fake_run_pipeline)
-    monkeypatch.setattr(server_module, "_get_llm_client", lambda mock: object())
+    monkeypatch.setattr(server_module, "_get_llm_factory", lambda mock: (lambda task: object()))
 
     events = []
     async with client.stream("GET", "/api/audit/stream", params={"url": "example.pt", "mock": "true"}) as response:
@@ -94,15 +94,15 @@ async def test_stream_audit_emits_sse_events_in_order(monkeypatch, client):
 
 
 @pytest.mark.asyncio
-async def test_stream_audit_passes_mock_flag_through_to_get_llm_client(monkeypatch, client):
+async def test_stream_audit_passes_mock_flag_through_to_get_llm_factory(monkeypatch, client):
     seen = {}
 
-    def fake_get_llm_client(mock):
+    def fake_get_llm_factory(mock):
         seen["mock"] = mock
-        return object()
+        return lambda task: object()
 
     monkeypatch.setattr(server_module, "run_pipeline", _fake_run_pipeline)
-    monkeypatch.setattr(server_module, "_get_llm_client", fake_get_llm_client)
+    monkeypatch.setattr(server_module, "_get_llm_factory", fake_get_llm_factory)
 
     async with client.stream("GET", "/api/audit/stream", params={"url": "example.pt", "mock": "true"}) as response:
         async for _ in response.aiter_lines():
@@ -136,7 +136,6 @@ async def test_regenerate_ads_calls_generate_all_ads_and_returns_counts(monkeypa
         return {"02.1": {"headlines": [{"valid": True}, {"valid": False}], "descriptions": [{"valid": True}]}}
 
     monkeypatch.setattr(server_module, "generate_all_ads", fake_generate_all_ads)
-    monkeypatch.setattr(server_module, "_get_llm_client", lambda mock: object())
 
     resp = await client.post(
         "/api/audit/regenerate-ads",

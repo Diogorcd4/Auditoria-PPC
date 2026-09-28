@@ -8,9 +8,17 @@ const TASKS = [
   { key: "anuncios", label: "Anúncios" },
 ];
 
+const GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
+
 async function testOllama(ollamaUrl) {
   const res = await fetch(`/api/settings/test-ollama?ollama_url=${encodeURIComponent(ollamaUrl)}`);
   if (!res.ok) return { reachable: false, models: [] };
+  return res.json();
+}
+
+async function testOpenAICompatible(baseUrl) {
+  const res = await fetch(`/api/settings/test-openai-compatible?base_url=${encodeURIComponent(baseUrl)}`);
+  if (!res.ok) return { reachable: false, models: [], suggested_model: null, detail: "Falha ao contactar o servidor." };
   return res.json();
 }
 
@@ -33,12 +41,87 @@ export async function renderSettings(root) {
   }
 
   // --- Motor de IA ---
-  const engineCard = el("div", { class: "card" }, [el("h3", { style: "margin-bottom:14px" }, "Motor de IA (Ollama)")]);
+  const engineCard = el("div", { class: "card" }, [el("h3", { style: "margin-bottom:14px" }, "Motor de IA")]);
+  const backendSelect = el(
+    "select",
+    { style: "width:100%;background:var(--bg-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px;margin-bottom:14px" },
+    [
+      el("option", { value: "ollama", selected: settings.llm.backend !== "openai_compatible" ? "selected" : undefined }, "Ollama (local)"),
+      el("option", { value: "openai_compatible", selected: settings.llm.backend === "openai_compatible" ? "selected" : undefined }, "Compatível com OpenAI (ex.: Gemini gratuito)"),
+    ]
+  );
+  const geminiPresetBtn = el("button", { class: "btn btn--ghost btn--sm" }, "Usar Gemini gratuito");
+
   const statusRow = el("div", { class: "engine-status", style: "margin-bottom:16px" }, [el("span", { class: "dot" }), el("span", {}, "A verificar…")]);
   const urlInput = el("input", { value: settings.llm.ollama_url, style: "width:100%;margin-bottom:12px" });
   urlInput.className = "";
   const testBtn = el("button", { class: "btn btn--ghost btn--sm" }, "Testar ligação");
   const numCtxInput = el("input", { type: "number", value: settings.llm.num_ctx, style: "width:140px" });
+  const ollamaFieldsWrap = el("div", {}, [
+    statusRow,
+    el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px" }, "URL do Ollama"),
+    el("div", { style: "display:flex;gap:8px;margin-bottom:16px" }, [urlInput, testBtn]),
+    el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px" }, "Contexto (num_ctx)"),
+    numCtxInput,
+  ]);
+
+  const openaiStatusRow = el("div", { class: "engine-status", style: "margin-bottom:16px" }, [el("span", { class: "dot" }), el("span", {}, "Por testar…")]);
+  const openaiBaseUrlInput = el("input", { value: settings.llm.openai_compatible?.base_url || GEMINI_BASE_URL, style: "width:100%;margin-bottom:12px" });
+  const openaiTestBtn = el("button", { class: "btn btn--ghost btn--sm" }, "Testar ligação");
+  const openaiFieldsWrap = el("div", { style: "display:none" }, [
+    el("p", { style: "font-size:0.8rem;color:var(--muted);margin-bottom:12px" }, "A chave de API nunca se introduz aqui: é lida do ficheiro .env no servidor (AUDITOR_API_KEY)."),
+    openaiStatusRow,
+    el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px" }, "URL base (compatível com OpenAI)"),
+    el("div", { style: "display:flex;gap:8px;margin-bottom:16px" }, [openaiBaseUrlInput, openaiTestBtn]),
+  ]);
+
+  function syncBackendFieldsVisibility() {
+    const usingOpenAI = backendSelect.value === "openai_compatible";
+    ollamaFieldsWrap.style.display = usingOpenAI ? "none" : "";
+    openaiFieldsWrap.style.display = usingOpenAI ? "" : "none";
+  }
+  backendSelect.addEventListener("change", syncBackendFieldsVisibility);
+
+  async function refreshOpenAICompatibleStatus() {
+    const dot = openaiStatusRow.querySelector(".dot");
+    const label = openaiStatusRow.querySelector("span:last-child");
+    dot.className = "dot";
+    label.textContent = "A verificar…";
+    const { reachable, models, suggested_model, detail } = await testOpenAICompatible(openaiBaseUrlInput.value);
+    if (reachable) {
+      dot.classList.add("is-ok");
+      label.textContent = `Ligado — ${models.length} modelo(s) disponível(is)`;
+      if (suggested_model) {
+        for (const task of TASKS) {
+          const select = modelSelects[task.key];
+          if (!select.value) {
+            select.innerHTML = "";
+            select.appendChild(el("option", { value: suggested_model, selected: "selected" }, suggested_model));
+          }
+        }
+      }
+    } else {
+      dot.classList.add("is-bad");
+      label.textContent = detail || "Não foi possível ligar.";
+    }
+    return { reachable, suggested_model };
+  }
+  openaiTestBtn.addEventListener("click", refreshOpenAICompatibleStatus);
+
+  geminiPresetBtn.addEventListener("click", async () => {
+    backendSelect.value = "openai_compatible";
+    syncBackendFieldsVisibility();
+    openaiBaseUrlInput.value = GEMINI_BASE_URL;
+    geminiPresetBtn.disabled = true;
+    geminiPresetBtn.textContent = "A testar…";
+    try {
+      const { reachable, suggested_model } = await refreshOpenAICompatibleStatus();
+      showToast(reachable ? `Gemini gratuito activado${suggested_model ? ` — modelo sugerido: ${suggested_model}` : ""}.` : "Não foi possível ligar ao Gemini. Verifique AUDITOR_API_KEY no .env.");
+    } finally {
+      geminiPresetBtn.disabled = false;
+      geminiPresetBtn.textContent = "Usar Gemini gratuito";
+    }
+  });
 
   const modelSelects = {};
   const modelsWrap = el("div", { style: "display:flex;flex-direction:column;gap:12px;margin-top:14px" });
@@ -80,15 +163,17 @@ export async function renderSettings(root) {
   testBtn.addEventListener("click", refreshOllamaStatus);
 
   engineCard.append(
-    statusRow,
-    el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px" }, "URL do Ollama"),
-    el("div", { style: "display:flex;gap:8px;margin-bottom:16px" }, [urlInput, testBtn]),
-    el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px" }, "Contexto (num_ctx)"),
-    numCtxInput,
+    el("div", { style: "display:flex;gap:8px;align-items:flex-end;margin-bottom:4px" }, [
+      el("div", { style: "flex:1" }, backendSelect),
+      geminiPresetBtn,
+    ]),
+    ollamaFieldsWrap,
+    openaiFieldsWrap,
     el("h4", { style: "margin-top:20px;margin-bottom:4px;font-size:0.85rem" }, "Modelo por tarefa"),
     modelsWrap
   );
   wrap.appendChild(engineCard);
+  syncBackendFieldsVisibility();
   refreshOllamaStatus();
 
   // --- Limites do crawl ---
@@ -128,9 +213,11 @@ export async function renderSettings(root) {
         owner_services: servicesInput.value.split(",").map((s) => s.trim()).filter(Boolean),
         llm: {
           ...settings.llm,
+          backend: backendSelect.value,
           ollama_url: urlInput.value,
           num_ctx: Number(numCtxInput.value) || settings.llm.num_ctx,
-          tasks: Object.fromEntries(TASKS.map((t) => [t.key, { backend: settings.llm.tasks?.[t.key]?.backend || "ollama", model: modelSelects[t.key].value }])),
+          openai_compatible: { ...settings.llm.openai_compatible, base_url: openaiBaseUrlInput.value },
+          tasks: Object.fromEntries(TASKS.map((t) => [t.key, { backend: settings.llm.tasks?.[t.key]?.backend || "", model: modelSelects[t.key].value }])),
         },
         crawl: {
           max_pages: Number(maxPagesInput.value) || settings.crawl.max_pages,
