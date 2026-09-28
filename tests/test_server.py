@@ -73,3 +73,48 @@ async def test_stream_audit_passes_mock_flag_through_to_get_llm_client(monkeypat
             pass
 
     assert seen["mock"] is True
+
+
+def _sample_profile():
+    fields = {name: {"value": "x", "origin": "site", "confidence": 0.8} for name in [
+        "sector", "empresa", "publico", "descricao_publico", "acao", "geografia", "landing_page_url",
+        "pagina_destino", "produto_ou_servico", "preco", "idade", "perfil", "nivel_poder_compra",
+        "motivacao", "objecao", "comportamento_online", "objetivo_conversao", "fonte_dados_clientes",
+        "fonte_dados_subscritores", "conteudo_a_promover", "objectivo_pos_trafego", "motivacao_clique", "canais",
+    ]}
+    fields["business_model"] = {"value": "leads", "origin": "inferido", "confidence": 0.8}
+    fields["conteudo_forte"] = False
+    return fields
+
+
+def _sample_pages():
+    return [{"id": "home", "url": "https://example.pt/", "type": "home", "title": "Home"}]
+
+
+@pytest.mark.asyncio
+async def test_regenerate_ads_calls_generate_all_ads_and_returns_counts(monkeypatch, client):
+    captured = {}
+
+    async def fake_generate_all_ads(llm, templates, profile, pages, *, model="", **kwargs):
+        captured["templates"] = templates
+        return {"02.1": {"headlines": [{"valid": True}, {"valid": False}], "descriptions": [{"valid": True}]}}
+
+    monkeypatch.setattr(server_module, "generate_all_ads", fake_generate_all_ads)
+    monkeypatch.setattr(server_module, "_get_llm_client", lambda mock: object())
+
+    resp = await client.post(
+        "/api/audit/regenerate-ads",
+        json={"profile": _sample_profile(), "pages": _sample_pages(), "mock": True},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["ads_valid_count"] == 2
+    assert data["ads_total_count"] == 3
+    assert captured["templates"] == ["02.1_search_leads.md", "02.2_pmax_leads.md", "02.5_meta_leads.md"]
+
+
+@pytest.mark.asyncio
+async def test_regenerate_ads_requires_profile_and_pages(client):
+    resp = await client.post("/api/audit/regenerate-ads", json={"profile": None, "pages": None})
+    assert resp.status_code == 400

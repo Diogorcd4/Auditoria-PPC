@@ -8,7 +8,7 @@ from .base import LLMClient, LLMResponse
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "tests" / "fixtures"
 
-TASK_MARKER_RE = re.compile(r"\[TASK:([a-z0-9_]+)\]")
+TASK_MARKER_RE = re.compile(r"\[TASK:([a-zA-Z0-9_.]+)\]")
 
 
 class MockLLMClient(LLMClient):

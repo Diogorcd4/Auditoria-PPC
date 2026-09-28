@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from auditor.ads import generate_all_ads
 from auditor.appconfig import build_llm_client, load_config, model_for_task
+from auditor.crawler import PageData
 from auditor.llm.mock import MockLLMClient
-from auditor.pipeline import PipelineConfig, run_pipeline
+from auditor.pipeline import PipelineConfig, count_ads_assets, run_pipeline
+from auditor.prompts import select_templates_for_profile
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 DEMO_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "demo_audit.json"
@@ -66,6 +69,31 @@ async def stream_audit(request: Request, url: str, max_pages: int = 25, mock: bo
             yield f"data: {event.model_dump_json()}\n\n"
 
     return StreamingResponse(event_source(), media_type="text/event-stream")
+
+
+@app.post("/api/audit/regenerate-ads")
+async def regenerate_ads(payload: dict = Body(...)) -> JSONResponse:
+    """Re-run only the "anuncios" step, for the "Regenerar anúncios com este perfil" button:
+    the client already holds `profile` and `pages` from the finished audit, so this never
+    needs to re-crawl or re-run tracking/analysis - it goes straight to ad generation."""
+    profile = payload.get("profile")
+    pages_raw = payload.get("pages")
+    if not profile or not pages_raw:
+        raise HTTPException(status_code=400, detail="É preciso indicar 'profile' e 'pages'.")
+
+    try:
+        pages = [PageData.model_validate(p) for p in pages_raw]
+    except Exception as exc:  # noqa: BLE001 - surfaced to the client as a 400, not a 500
+        raise HTTPException(status_code=400, detail=f"'pages' inválido: {exc}") from None
+
+    app_config = load_config()
+    llm = _get_llm_client(bool(payload.get("mock", False)))
+    templates = select_templates_for_profile(profile["business_model"]["value"], profile.get("conteudo_forte", False))
+    model = model_for_task(app_config, "anuncios")
+
+    ads = await generate_all_ads(llm, templates, profile, pages, model=model)
+    valid, total = count_ads_assets(ads)
+    return JSONResponse({"ads": ads, "ads_valid_count": valid, "ads_total_count": total})
 
 
 # Routing is hash-based (#/demo, #/history...), so the server only ever needs to serve

@@ -13,6 +13,7 @@ import httpx
 from playwright.async_api import Browser, async_playwright
 from pydantic import BaseModel
 
+from auditor.ads import MAX_CORRECTION_ROUNDS, generate_all_ads
 from auditor.analysis import PageCommunication, compute_communication_score, synthesize_site
 from auditor.analysis import analyze_page as _analyze_page
 from auditor.browser import launch_browser
@@ -48,6 +49,7 @@ class PipelineConfig:
     tracking_pages: int = 4
     keyword_delay_seconds: float = 0.3
     keyword_use_alphabet: bool = True
+    max_correction_rounds: int = MAX_CORRECTION_ROUNDS
     owner_services: list[str] = field(default_factory=lambda: list(DEFAULT_OWNER_SERVICES))
     model_for_task: dict[str, str] = field(default_factory=dict)
     output_dir: Path = Path("output")
@@ -235,11 +237,20 @@ async def _run_step(
         return profile.model_dump()
 
     if step == "anuncios":
-        # A geração real dos anúncios é implementada na Fase 6; por agora só regista quais
-        # templates seriam usados, para que o perfil já apareça correto na interface.
         profile = context["perfil"]
         templates = select_templates_for_profile(profile["business_model"]["value"], profile.get("conteudo_forte", False))
-        return {"selected_templates": templates, "ads": {}}
+        model = config.model_for_task.get("anuncios", "")
+        prompts_output_dir = Path(config.output_dir) / context["domain"] / context["audit_id"] / "prompts_preenchidos"
+        ads = await generate_all_ads(
+            llm,
+            templates,
+            profile,
+            pages,
+            model=model,
+            max_correction_rounds=config.max_correction_rounds,
+            prompts_output_dir=prompts_output_dir,
+        )
+        return {"selected_templates": templates, "ads": ads}
 
     if step == "relatorio":
         return _assemble_report(context, config, duration_so_far)

@@ -10,6 +10,7 @@ import { renderOpportunities } from "./sections/opportunities.js";
 import { renderAds } from "./sections/ads.js";
 import { renderProfile } from "./sections/profile.js";
 import { exportHtmlReport, exportJson, copySummary } from "./exportReport.js";
+import { showToast } from "./utils.js";
 
 const NAV_ITEMS = [
   { id: "sec-resumo", label: "Resumo" },
@@ -86,6 +87,34 @@ export function renderDashboard(root, audit, { isDemo = false } = {}) {
     "sec-perfil": renderProfile,
   };
 
+  const ctx = {
+    isDemo,
+    onRegenerateAds: async (updatedProfile) => {
+      if (isDemo) {
+        showToast("Não disponível na demonstração — experimente numa auditoria real.");
+        return;
+      }
+      showToast("A regenerar anúncios…");
+      try {
+        const res = await fetch("/api/audit/regenerate-ads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profile: updatedProfile, pages: audit.pages }),
+        });
+        if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail || "Falha ao regenerar anúncios.");
+        const data = await res.json();
+        audit.profile = updatedProfile;
+        audit.ads = data.ads;
+        audit.meta.ads_valid_count = data.ads_valid_count;
+        audit.meta.ads_total_count = data.ads_total_count;
+        showToast("Anúncios regenerados.");
+        renderDashboard(root, audit, { isDemo });
+      } catch (err) {
+        showToast(err.message || "Não foi possível regenerar os anúncios.");
+      }
+    },
+  };
+
   for (const item of NAV_ITEMS) {
     const link = el("a", { href: `#nav-${item.id}`, "data-internal": item.internal ? "true" : "false" }, [el("span", { class: "dot is-ready" }), item.label]);
     link.addEventListener("click", (event) => {
@@ -94,7 +123,7 @@ export function renderDashboard(root, audit, { isDemo = false } = {}) {
     });
     sideNav.appendChild(link);
 
-    const sectionEl = sectionRenderers[item.id](audit);
+    const sectionEl = sectionRenderers[item.id](audit, ctx);
     sectionEl.classList.add("fade-in");
     sectionsWrap.appendChild(sectionEl);
   }

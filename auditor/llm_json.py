@@ -11,6 +11,7 @@ from auditor.llm.base import LLMClient
 T = TypeVar("T", bound=BaseModel)
 
 FENCED_JSON_RE = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
+DELIMITED_JSON_RE = re.compile(r"<<<JSON\s*(.*?)\s*JSON>>>", re.DOTALL)
 JSON_BLOCK_RE = re.compile(r"\{.*\}|\[.*\]", re.DOTALL)
 
 PT_PT_INSTRUCTION = (
@@ -37,6 +38,9 @@ def wrap_site_content(text: str) -> str:
 
 
 def _extract_json(text: str) -> str:
+    delimited = DELIMITED_JSON_RE.search(text)
+    if delimited:
+        return delimited.group(1).strip()
     fenced = FENCED_JSON_RE.search(text)
     if fenced:
         return fenced.group(1).strip()

@@ -1,4 +1,4 @@
-import { el, showToast } from "../utils.js";
+import { el } from "../utils.js";
 
 const FIELD_LABEL = {
   sector: "Setor",
@@ -27,13 +27,13 @@ const FIELD_LABEL = {
   business_model: "Modelo de negócio",
 };
 
-export function renderProfile(audit) {
+export function renderProfile(audit, ctx = {}) {
   const section = el("section", { class: "section-block internal-only", id: "sec-perfil" });
   section.append(
     el("div", { class: "section-head" }, [
       el("div", { class: "eyebrow" }, "Perfil e prompts"),
       el("h2", { class: "section-title" }, "O que foi usado para preencher os anúncios"),
-      el("p", { class: "section-summary" }, "Visível só na vista interna. Cada campo mostra de onde veio o valor."),
+      el("p", { class: "section-summary" }, "Visível só na vista interna. Cada campo mostra de onde veio o valor. Edite um valor e regenere para atualizar os anúncios."),
     ])
   );
 
@@ -62,7 +62,26 @@ export function renderProfile(audit) {
     );
   }
   const regenBtn = el("button", { class: "btn btn--primary", style: "margin-top:16px" }, "Regenerar anúncios com este perfil");
-  regenBtn.addEventListener("click", () => showToast("A regeneração liga-se ao pipeline real na Fase 6 desta construção."));
+  regenBtn.addEventListener("click", async () => {
+    const updatedProfile = {};
+    for (const [key, entry] of Object.entries(audit.profile)) {
+      if (!entry || typeof entry !== "object" || !("value" in entry)) {
+        updatedProfile[key] = entry;
+        continue;
+      }
+      const input = table.querySelector(`input[data-field="${key}"]`);
+      const newValue = input ? input.value : entry.value;
+      updatedProfile[key] = newValue === entry.value ? entry : { value: newValue, origin: "manual", confidence: 1 };
+    }
+    regenBtn.disabled = true;
+    regenBtn.textContent = "A regenerar…";
+    try {
+      await ctx.onRegenerateAds?.(updatedProfile);
+    } finally {
+      regenBtn.disabled = false;
+      regenBtn.textContent = "Regenerar anúncios com este perfil";
+    }
+  });
   card.appendChild(regenBtn);
   section.appendChild(card);
 
