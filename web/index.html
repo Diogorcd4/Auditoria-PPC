@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pt-PT">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Auditor — Auditoria de websites</title>
+  <meta name="color-scheme" content="dark" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" onerror="this.remove()" />
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap site-header__inner">
+      <a class="brand" href="#/">Auditor<span class="brand__dot">.</span></a>
+      <nav class="site-nav" aria-label="Navegação principal">
+        <a href="#/" data-route="/">Início</a>
+        <a href="#/history" data-route="/history">Histórico</a>
+        <a href="#/prompts" data-route="/prompts">Prompts</a>
+        <a href="#/settings" data-route="/settings">Definições</a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="app" class="app-root" tabindex="-1"></main>
+
+  <div id="drawer-root"></div>
+  <div id="toast-root" class="toast-root" aria-live="polite"></div>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>
