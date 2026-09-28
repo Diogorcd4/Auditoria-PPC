@@ -1,0 +1,19 @@
+{
+  "insights": {
+    "problemas": [{"text": "Medo do dentista", "source_page": "home"}],
+    "caracteristicas": [{"text": "Sedação consciente", "source_page": "servico"}],
+    "motivos_para_comprar": [],
+    "objeccoes_e_receios": [{"text": "Custo elevado", "source_page": "precos"}],
+    "desejos": [{"text": "Recuperar a confiança", "source_page": "home"}],
+    "crencas_e_mentalidade": [],
+    "oportunidades": [{"text": "Adiar agrava o problema", "source_page": "home"}]
+  },
+  "global_gaps": ["Não há preços indicados em nenhuma página."],
+  "message_inconsistencies": ["A home promete rapidez mas a página de preços não reforça isso."],
+  "top_improvements": [
+    {"title": "Adicionar CTA na página Sobre", "impact": "alto", "effort": "baixo", "page": "home"}
+  ],
+  "strengths": ["A home reconhece o problema logo no H1."],
+  "weaknesses": ["Não há preços indicados em nenhuma página."],
+  "top_opportunities": ["Configurar eventos de conversão antes de investir em campanhas."]
+}

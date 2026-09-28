@@ -3,12 +3,18 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+
+from auditor.appconfig import build_llm_client, load_config, model_for_task
+from auditor.llm.mock import MockLLMClient
+from auditor.pipeline import PipelineConfig, run_pipeline
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 DEMO_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "demo_audit.json"
+OUTPUT_DIR = Path(__file__).resolve().parents[1] / "output"
+CACHE_DIR = Path(__file__).resolve().parents[1] / ".cache"
 
 app = FastAPI(title="Auditor")
 
@@ -20,6 +26,46 @@ def get_demo_audit() -> JSONResponse:
         raise HTTPException(status_code=404, detail="Fixture de demonstração não encontrada.")
     data = json.loads(DEMO_FIXTURE_PATH.read_text(encoding="utf-8"))
     return JSONResponse(data)
+
+
+def _get_llm_client(mock: bool):
+    """Kept as a separate, monkeypatchable seam: tests replace this to inject a MockLLMClient
+    preloaded with fixtures, without ever needing a real Ollama install to test the SSE wiring."""
+    if mock:
+        return MockLLMClient()
+    return build_llm_client(load_config())
+
+
+def _pipeline_config_from_app_config(url: str, max_pages: int, app_config: dict) -> PipelineConfig:
+    return PipelineConfig(
+        url=url,
+        max_pages=max_pages,
+        delay_seconds=app_config["crawl"]["delay_seconds"],
+        respect_robots=app_config["crawl"]["respect_robots"],
+        tracking_pages=app_config["tracking"]["pages"],
+        owner_services=list(app_config.get("owner_services", [])),
+        model_for_task={task: model_for_task(app_config, task) for task in ("analise", "keywords", "perfil", "anuncios")},
+        output_dir=OUTPUT_DIR,
+        cache_dir=CACHE_DIR,
+    )
+
+
+@app.get("/api/audit/stream")
+async def stream_audit(request: Request, url: str, max_pages: int = 25, mock: bool = False) -> StreamingResponse:
+    """SSE stream of PipelineEvent objects, one per pipeline step transition. The client
+    (EventSource in app.js) stops listening simply by closing the connection - detected here
+    via `request.is_disconnected()` so a cancelled audit doesn't keep running server-side."""
+    app_config = load_config()
+    llm = _get_llm_client(mock)
+    pipeline_config = _pipeline_config_from_app_config(url, max_pages, app_config)
+
+    async def event_source():
+        async for event in run_pipeline(pipeline_config, llm):
+            if await request.is_disconnected():
+                break
+            yield f"data: {event.model_dump_json()}\n\n"
+
+    return StreamingResponse(event_source(), media_type="text/event-stream")
 
 
 # Routing is hash-based (#/demo, #/history...), so the server only ever needs to serve

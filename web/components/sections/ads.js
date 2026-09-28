@@ -99,6 +99,13 @@ export function renderAds(audit) {
   const content = el("div");
   section.append(tabs, content);
 
+  if (keys.length === 0) {
+    content.appendChild(
+      el("div", { class: "card" }, "Os anúncios ainda não foram gerados para esta auditoria (a geração liga-se ao pipeline real na Fase 6 desta construção).")
+    );
+    return section;
+  }
+
   let activeKey = keys[0];
 
   function renderContent() {

@@ -39,6 +39,7 @@ export function renderProfile(audit) {
 
   const table = el("table", { class: "profile-table" });
   for (const [key, entry] of Object.entries(audit.profile)) {
+    if (!entry || typeof entry !== "object" || !("value" in entry)) continue; // e.g. conteudo_forte, a plain boolean
     const input = el("input", { value: entry.value, "data-field": key });
     table.appendChild(
       el("tr", {}, [
@@ -52,6 +53,14 @@ export function renderProfile(audit) {
   }
 
   const card = el("div", { class: "card" }, [table]);
+  if ("conteudo_forte" in audit.profile) {
+    card.appendChild(
+      el("div", { style: "margin-top:12px;font-size:0.82rem;color:var(--muted)" }, [
+        "Conteúdo forte (acrescenta o prompt 02.7 de tráfego): ",
+        el("strong", { style: "color:var(--text)" }, audit.profile.conteudo_forte ? "Sim" : "Não"),
+      ])
+    );
+  }
   const regenBtn = el("button", { class: "btn btn--primary", style: "margin-top:16px" }, "Regenerar anúncios com este perfil");
   regenBtn.addEventListener("click", () => showToast("A regeneração liga-se ao pipeline real na Fase 6 desta construção."));
   card.appendChild(regenBtn);

@@ -1,0 +1,11 @@
+{
+  "inferred": {
+    "problema": ["tenho medo do dentista"],
+    "solucao": ["tratamento dentário sem dor"],
+    "comparacao": ["melhor clínica dentária lisboa"],
+    "decisao": ["marcar consulta avaliação gratuita"],
+    "transacional_local": ["dentista perto de mim"]
+  },
+  "gaps": ["Sem página sobre branqueamento dentário."],
+  "negatives": ["grátis sem consulta", "curso", "emprego"]
+}

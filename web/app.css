@@ -314,6 +314,8 @@ h1, h2, h3, h4, p { margin: 0; }
 .progress-step.is-done .dot { background: var(--ok); }
 .progress-step.is-active { color: var(--text); border-color: var(--accent); }
 .progress-step.is-active .dot { background: var(--accent); animation: pulse 1.3s ease-in-out infinite; }
+.progress-step.is-error { color: var(--bad); border-color: var(--bad); }
+.progress-step.is-error .dot { background: var(--bad); }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 .progress-meta { margin-left: auto; display: flex; align-items: center; gap: 12px; color: var(--muted); font-size: 0.82rem; flex-shrink: 0; }
 

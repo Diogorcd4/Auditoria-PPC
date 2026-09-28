@@ -1,0 +1,13 @@
+{
+  "page_id": "placeholder",
+  "categories": {
+    "problemas": {"level": "forte", "evidence": "A página nomeia o receio do dentista.", "recommendation": "Manter este enquadramento."},
+    "caracteristicas": {"level": "fraco", "evidence": "Menciona sedação, sem detalhar serviços.", "recommendation": "Acrescentar uma secção de serviços."},
+    "motivos_para_comprar": {"level": "fraco", "evidence": "Não consta no site um motivo de ação imediata.", "recommendation": "Adicionar um motivo concreto."},
+    "objeccoes_e_receios": {"level": "forte", "evidence": "Aborda o medo do dentista.", "recommendation": "Reforçar com um testemunho."},
+    "desejos": {"level": "forte", "evidence": "Comunica o resultado desejado.", "recommendation": "Nenhuma alteração necessária."},
+    "crencas_e_mentalidade": {"level": "nao_aplicavel", "evidence": "Não consta no site.", "recommendation": "Não aplicável."},
+    "oportunidades": {"level": "ausente", "evidence": "Não há menção ao custo de adiar.", "recommendation": "Acrescentar esse ponto."}
+  },
+  "cta_analysis": {"clarity": "forte", "position": "acima da dobra", "note": "CTA claro e coerente."}
+}

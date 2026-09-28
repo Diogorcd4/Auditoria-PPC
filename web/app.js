@@ -2,6 +2,7 @@ import { registerRoute, startRouter } from "./components/router.js";
 import { renderHero } from "./components/hero.js";
 import { renderDashboard, renderDashboardSkeleton } from "./components/dashboard.js";
 import { renderPlaceholder, renderErrorCard } from "./components/placeholder.js";
+import { runLiveAudit } from "./components/liveAudit.js";
 import { fetchDemoAudit } from "./components/state.js";
 
 const app = document.getElementById("app");
@@ -25,7 +26,7 @@ registerRoute("/audit/:id", ({ id }) => {
     window.location.hash = "#/demo";
     return;
   }
-  renderPlaceholder(app, `Auditoria de ${id}`, "A execução de auditorias reais liga-se ao motor de crawling e à IA local numa fase seguinte desta construção. Por agora, veja a demonstração em #/demo.");
+  runLiveAudit(app, id);
 });
 
 registerRoute("/history", () => renderPlaceholder(app, "Histórico", "Esta secção fica disponível numa fase seguinte da construção."));

@@ -142,6 +142,33 @@ def _consent_mode_detected(urls: list[str]) -> bool:
     return any("gcd=" in u or "gcs=" in u for u in urls)
 
 
+def _meta_events(urls: list[str]) -> list[str]:
+    events = set()
+    for u in urls:
+        ev = (parse_qs(urlparse(u).query).get("ev") or [None])[0]
+        if ev:
+            events.add(ev)
+    return sorted(events)
+
+
+def empty_report() -> dict:
+    """A report with everything "not detected" - used when there is no page to inspect at all."""
+    not_detected = {"detected": False, "id": None, "state": "Não detetado", "evidence": []}
+    return {
+        "ga4": {"platform": "Google Analytics 4", **not_detected},
+        "ua": {"platform": "Universal Analytics", **not_detected},
+        "gtm": {"platform": "Google Tag Manager", **not_detected, "state": "Não detetado"},
+        "google_ads": {"platform": "Google Ads", **not_detected},
+        "meta_pixel": {"platform": "Meta Pixel", **not_detected, "events_observed": []},
+        "microsoft_uet": {"platform": "Microsoft Advertising (UET)", **not_detected},
+        "consent_mode": {"detected": False, "state": "Não detetado"},
+        "cmp": {"name": "Não detetado", "cookie_banner_detected": False},
+        "extras": [{"platform": name, "detected": False, "state": "Não detetado"} for name, _ in EXTRA_SIGNATURES],
+        "ecommerce_events_in_datalayer": [],
+        "not_visible_note": NOT_VISIBLE_NOTE,
+    }
+
+
 async def detect_tracking(page: Page, url: str, *, consent_selectors: Optional[list[str]] = None) -> dict:
     """Two-pass tracking detection for one page: navigate, capture requests, try to accept
     cookies, then capture requests again. Every request matched by ABORT_PATTERNS is recorded
@@ -253,6 +280,7 @@ def _build_report(html: str, runtime: dict, log: _RequestLog, loaded: dict[str, 
             "id": fbq_ids[0] if fbq_ids else None,
             "state": state_for("meta_pixel", fbq_loaded_in_code),
             "evidence": evidence_for("meta_pixel"),
+            "events_observed": _meta_events(before_by_platform.get("meta_pixel", []) + after_by_platform.get("meta_pixel", [])),
         },
         "microsoft_uet": {
             "platform": "Microsoft Advertising (UET)",
@@ -305,6 +333,8 @@ def merge_reports(reports: list[dict]) -> dict:
             "detected": any(e["detected"] for e in entries),
             "evidence": list(dict.fromkeys(line for e in entries for line in e["evidence"])) [:6],
         }
+        if key == "meta_pixel":
+            merged[key]["events_observed"] = sorted(set().union(*(set(e.get("events_observed", [])) for e in entries)))
 
     merged["consent_mode"] = {
         "detected": any(r["consent_mode"]["detected"] for r in reports),

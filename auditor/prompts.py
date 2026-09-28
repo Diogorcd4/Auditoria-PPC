@@ -93,6 +93,15 @@ TEMPLATES_FOR_MODEL: dict[str, list[str]] = {
 CONTENT_TEMPLATE = "02.7_meta_trafego.md"
 
 
+def select_templates_for_profile(business_model: str, conteudo_forte: bool = False) -> list[str]:
+    """Auto-selection rule from secção 4.5: leads -> 02.1/02.2/02.5; ecommerce -> 02.3/02.4/02.6;
+    a strong content signal always adds 02.7 on top, regardless of business model."""
+    templates = list(TEMPLATES_FOR_MODEL.get(business_model, TEMPLATES_FOR_MODEL["leads"]))
+    if conteudo_forte:
+        templates.append(CONTENT_TEMPLATE)
+    return templates
+
+
 def extract_placeholders(text: str) -> set[str]:
     """Return the inner text of every `[...]` placeholder found in `text`."""
     return {match[1:-1] for match in PLACEHOLDER_RE.findall(text)}
