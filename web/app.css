@@ -579,10 +579,6 @@ table.matrix tbody tr:last-child td { border-bottom: none; }
   animation: fadeIn 0.2s ease-out;
 }
 
-/* ---------- placeholder screens ---------- */
-.placeholder-screen { padding: 90px 0; text-align: center; color: var(--muted); }
-.placeholder-screen h1 { color: var(--text); font-size: 1.6rem; margin-bottom: 10px; }
-
 @media (max-width: 640px) {
   .hero h1 { font-size: 2.1rem; }
   .url-form { flex-wrap: wrap; border-radius: 20px; padding: 14px; }

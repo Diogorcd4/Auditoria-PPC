@@ -318,20 +318,122 @@ async def run_pipeline(
         (checkpoints.run_dir / "audit.json").write_text(
             json.dumps(context["relatorio"], ensure_ascii=False, indent=2), encoding="utf-8"
         )
-        _update_history_index(config.output_dir, context["relatorio"])
+        _update_history_index(config.output_dir, domain, audit_id, context["relatorio"])
 
 
-def _update_history_index(output_dir: Path | str, report: dict) -> None:
+def _update_history_index(output_dir: Path | str, domain: str, audit_id: str, report: dict) -> None:
     index_path = Path(output_dir) / "index.json"
     entries = json.loads(index_path.read_text(encoding="utf-8")) if index_path.exists() else []
+    entries = [e for e in entries if not (e.get("domain") == domain and e.get("audit_id") == audit_id)]
     entries.insert(
         0,
         {
-            "id": f"{report['meta']['domain']}/{report['meta']['audited_at']}",
-            "domain": report["meta"]["domain"],
+            "domain": domain,
+            "audit_id": audit_id,
             "date": report["meta"]["audited_at"],
             "score": report["meta"]["communication_score"],
+            "business_model": report["meta"]["business_model"],
         },
     )
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def load_saved_audit(output_dir: Path | str, domain: str, audit_id: str) -> Optional[dict]:
+    path = Path(output_dir) / domain / audit_id / "audit.json"
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def load_history(output_dir: Path | str) -> list[dict]:
+    index_path = Path(output_dir) / "index.json"
+    if not index_path.exists():
+        return []
+    return json.loads(index_path.read_text(encoding="utf-8"))
+
+
+def delete_saved_audit(output_dir: Path | str, domain: str, audit_id: str) -> bool:
+    import shutil
+
+    run_dir = Path(output_dir) / domain / audit_id
+    existed = run_dir.exists()
+    if existed:
+        shutil.rmtree(run_dir)
+
+    index_path = Path(output_dir) / "index.json"
+    if index_path.exists():
+        entries = json.loads(index_path.read_text(encoding="utf-8"))
+        entries = [e for e in entries if not (e.get("domain") == domain and e.get("audit_id") == audit_id)]
+        index_path.write_text(json.dumps(entries, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    return existed
+
+
+def find_resumable_audit_id(output_dir: Path | str, domain: str) -> Optional[str]:
+    """The most recently touched run for this domain that has at least one checkpoint - what
+    `--resume` without an explicit id picks up (secção 9: "retomar auditoria interrompida")."""
+    domain_dir = Path(output_dir) / domain
+    if not domain_dir.is_dir():
+        return None
+    candidates = [p for p in domain_dir.iterdir() if p.is_dir() and (p / "checkpoints").is_dir() and any((p / "checkpoints").iterdir())]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: p.stat().st_mtime, reverse=True)
+    return candidates[0].name
+
+
+def run_audit_sync(
+    url: str,
+    *,
+    max_pages: int = 25,
+    only: Optional[list[str]] = None,
+    dry_run: bool = False,
+    resume: bool = False,
+    mock: bool = False,
+) -> None:
+    """Synchronous entry point for `python -m auditor audit <url>`. Prints one line per
+    pipeline step transition as it happens."""
+    import asyncio
+
+    from auditor.appconfig import build_llm_client, load_config
+    from auditor.llm.mock import MockLLMClient
+
+    app_config = load_config()
+    steps_to_run = only or None
+    if dry_run:
+        print(f"[dry-run] passos que seriam executados: {', '.join(steps_to_run or STEPS)}")
+        print(f"[dry-run] URL: {url} | max_pages: {max_pages} | resume: {resume} | mock: {mock}")
+        return
+
+    audit_id = None
+    if resume:
+        audit_id = find_resumable_audit_id(Path("output"), domain_of(url))
+        if audit_id:
+            print(f"A retomar a auditoria existente {domain_of(url)}/{audit_id}…")
+        else:
+            print("Nenhuma auditoria por concluir encontrada para este domínio; a começar uma nova.")
+
+    llm = MockLLMClient() if mock else build_llm_client(app_config)
+    config = PipelineConfig(
+        url=url,
+        max_pages=max_pages,
+        audit_id=audit_id,
+        delay_seconds=app_config["crawl"]["delay_seconds"],
+        respect_robots=app_config["crawl"]["respect_robots"],
+        tracking_pages=app_config["tracking"]["pages"],
+        owner_services=list(app_config.get("owner_services", [])),
+        only=steps_to_run,
+        resume=resume,
+    )
+
+    async def _run() -> None:
+        async for event in run_pipeline(config, llm):
+            if event.status == "running":
+                print(f"[{event.step}] a processar…")
+            elif event.status == "done":
+                print(f"[{event.step}] concluído em {event.duration_seconds:.1f}s")
+            elif event.status == "error":
+                print(f"[{event.step}] ERRO: {event.error}")
+
+    asyncio.run(_run())

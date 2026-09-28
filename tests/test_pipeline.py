@@ -4,7 +4,16 @@ import httpx
 import pytest
 
 from auditor.llm.mock import MockLLMClient
-from auditor.pipeline import PipelineConfig, STEPS, run_pipeline
+from auditor.pipeline import (
+    PipelineConfig,
+    STEPS,
+    delete_saved_audit,
+    find_resumable_audit_id,
+    load_history,
+    load_saved_audit,
+    run_audit_sync,
+    run_pipeline,
+)
 
 FIXTURES = {
     "analise": "analysis_page.json",
@@ -190,3 +199,65 @@ async def test_run_pipeline_reports_a_failing_step_as_an_error_event_without_sto
     # the pipeline still reaches the end and reports on "anuncios"/"relatorio", even though
     # "perfil" failed - a broken step must never take down the rest of the audit
     assert any(e.step == "anuncios" for e in events)
+
+
+# ---------------------------------------------------------------------------
+# Histórico e retomar auditoria interrompida
+# ---------------------------------------------------------------------------
+
+
+def test_find_resumable_audit_id_is_none_when_domain_was_never_audited(tmp_path):
+    assert find_resumable_audit_id(tmp_path, "example.pt") is None
+
+
+def test_find_resumable_audit_id_is_none_when_no_checkpoints_exist(tmp_path):
+    (tmp_path / "example.pt" / "20260101T000000Z").mkdir(parents=True)
+    assert find_resumable_audit_id(tmp_path, "example.pt") is None
+
+
+def test_find_resumable_audit_id_picks_the_most_recently_touched_run(tmp_path):
+    import time
+
+    older = tmp_path / "example.pt" / "20260101T000000Z" / "checkpoints"
+    older.mkdir(parents=True)
+    (older / "crawl.json").write_text("{}", encoding="utf-8")
+
+    time.sleep(0.01)
+
+    newer = tmp_path / "example.pt" / "20260102T000000Z" / "checkpoints"
+    newer.mkdir(parents=True)
+    (newer / "crawl.json").write_text("{}", encoding="utf-8")
+
+    assert find_resumable_audit_id(tmp_path, "example.pt") == "20260102T000000Z"
+
+
+def test_load_history_save_and_delete_round_trip(tmp_path):
+    assert load_history(tmp_path) == []
+
+    from auditor.pipeline import _update_history_index
+
+    report = {"meta": {"domain": "example.pt", "audited_at": "2026-01-01T00:00:00Z", "communication_score": 55, "business_model": "leads"}}
+    _update_history_index(tmp_path, "example.pt", "run-1", report)
+
+    history = load_history(tmp_path)
+    assert len(history) == 1
+    assert history[0]["audit_id"] == "run-1"
+
+    run_dir = tmp_path / "example.pt" / "run-1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "audit.json").write_text(json.dumps(report), encoding="utf-8")
+
+    assert load_saved_audit(tmp_path, "example.pt", "run-1")["meta"]["domain"] == "example.pt"
+    assert load_saved_audit(tmp_path, "example.pt", "missing") is None
+
+    assert delete_saved_audit(tmp_path, "example.pt", "run-1") is True
+    assert not run_dir.exists()
+    assert load_history(tmp_path) == []
+    assert delete_saved_audit(tmp_path, "example.pt", "run-1") is False
+
+
+def test_run_audit_sync_dry_run_prints_the_plan_without_running(capsys):
+    run_audit_sync("example.pt", only=["crawl", "tracking"], dry_run=True)
+    out = capsys.readouterr().out
+    assert "crawl, tracking" in out
+    assert "example.pt" in out

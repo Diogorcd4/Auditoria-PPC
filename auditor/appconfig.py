@@ -12,6 +12,11 @@ def load_config(path: Path | str = CONFIG_PATH) -> dict:
         return yaml.safe_load(f)
 
 
+def save_config(config: dict, path: Path | str = CONFIG_PATH) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        yaml.safe_dump(config, f, allow_unicode=True, sort_keys=False)
+
+
 def build_llm_client(config: dict):
     from auditor.llm import OllamaClient, OpenAICompatClient
 

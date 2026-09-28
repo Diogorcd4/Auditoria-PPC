@@ -1,9 +1,12 @@
 import { registerRoute, startRouter } from "./components/router.js";
 import { renderHero } from "./components/hero.js";
 import { renderDashboard, renderDashboardSkeleton } from "./components/dashboard.js";
-import { renderPlaceholder, renderErrorCard } from "./components/placeholder.js";
+import { renderErrorCard } from "./components/placeholder.js";
 import { runLiveAudit } from "./components/liveAudit.js";
-import { fetchDemoAudit } from "./components/state.js";
+import { renderHistory } from "./components/history.js";
+import { renderSettings } from "./components/settings.js";
+import { renderPromptsEditor } from "./components/prompts.js";
+import { fetchDemoAudit, fetchSavedAudit } from "./components/state.js";
 
 const app = document.getElementById("app");
 
@@ -29,8 +32,20 @@ registerRoute("/audit/:id", ({ id }) => {
   runLiveAudit(app, id);
 });
 
-registerRoute("/history", () => renderPlaceholder(app, "Histórico", "Esta secção fica disponível numa fase seguinte da construção."));
-registerRoute("/settings", () => renderPlaceholder(app, "Definições", "Esta secção fica disponível numa fase seguinte da construção."));
-registerRoute("/prompts", () => renderPlaceholder(app, "Prompts", "O editor dos 7 prompts fica disponível numa fase seguinte da construção."));
+registerRoute("/report/:domain/:auditId", async ({ domain, auditId }) => {
+  renderDashboardSkeleton(app);
+  try {
+    const audit = await fetchSavedAudit(domain, auditId);
+    renderDashboard(app, audit, { isDemo: false });
+  } catch (err) {
+    renderErrorCard(app, err.message || "Não foi possível carregar esta auditoria.", () => {
+      window.dispatchEvent(new Event("hashchange"));
+    });
+  }
+});
+
+registerRoute("/history", () => renderHistory(app));
+registerRoute("/settings", () => renderSettings(app));
+registerRoute("/prompts", () => renderPromptsEditor(app));
 
 startRouter();

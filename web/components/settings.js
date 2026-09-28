@@ -1,0 +1,151 @@
+import { el, showToast } from "./utils.js";
+import { fetchSettings, saveSettings } from "./state.js";
+
+const TASKS = [
+  { key: "analise", label: "Análise de comunicação" },
+  { key: "keywords", label: "Termos de pesquisa" },
+  { key: "perfil", label: "Perfil" },
+  { key: "anuncios", label: "Anúncios" },
+];
+
+async function testOllama(ollamaUrl) {
+  const res = await fetch(`/api/settings/test-ollama?ollama_url=${encodeURIComponent(ollamaUrl)}`);
+  if (!res.ok) return { reachable: false, models: [] };
+  return res.json();
+}
+
+export async function renderSettings(root) {
+  root.innerHTML = "";
+  const wrap = el("div", { class: "wrap", style: "padding:48px 0;max-width:760px" });
+  wrap.append(
+    el("div", { class: "eyebrow" }, "Definições"),
+    el("h1", { class: "section-title", style: "margin-bottom:4px" }, "Motor de IA, limites e marca"),
+    el("p", { class: "section-summary", style: "margin-bottom:24px" }, "Tudo aqui fica gravado em config.yaml, no seu computador.")
+  );
+  root.appendChild(wrap);
+
+  let settings;
+  try {
+    settings = await fetchSettings();
+  } catch {
+    wrap.appendChild(el("div", { class: "error-card" }, el("span", { class: "error-card__msg" }, "Não foi possível carregar as definições.")));
+    return;
+  }
+
+  // --- Motor de IA ---
+  const engineCard = el("div", { class: "card" }, [el("h3", { style: "margin-bottom:14px" }, "Motor de IA (Ollama)")]);
+  const statusRow = el("div", { class: "engine-status", style: "margin-bottom:16px" }, [el("span", { class: "dot" }), el("span", {}, "A verificar…")]);
+  const urlInput = el("input", { value: settings.llm.ollama_url, style: "width:100%;margin-bottom:12px" });
+  urlInput.className = "";
+  const testBtn = el("button", { class: "btn btn--ghost btn--sm" }, "Testar ligação");
+  const numCtxInput = el("input", { type: "number", value: settings.llm.num_ctx, style: "width:140px" });
+
+  const modelSelects = {};
+  const modelsWrap = el("div", { style: "display:flex;flex-direction:column;gap:12px;margin-top:14px" });
+  for (const task of TASKS) {
+    const currentModel = settings.llm.tasks?.[task.key]?.model || "";
+    const select = el("select", { style: "width:100%;background:var(--bg-2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px" });
+    select.appendChild(el("option", { value: "" }, "— escolher automaticamente —"));
+    if (currentModel) select.appendChild(el("option", { value: currentModel, selected: "selected" }, currentModel));
+    modelSelects[task.key] = select;
+    modelsWrap.appendChild(
+      el("div", {}, [el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px" }, task.label), select])
+    );
+  }
+
+  async function refreshOllamaStatus() {
+    const dot = statusRow.querySelector(".dot");
+    const label = statusRow.querySelector("span:last-child");
+    dot.className = "dot";
+    label.textContent = "A verificar…";
+    const { reachable, models } = await testOllama(urlInput.value);
+    if (reachable) {
+      dot.classList.add("is-ok");
+      label.textContent = `Ligado — ${models.length} modelo(s) instalado(s)`;
+      for (const task of TASKS) {
+        const select = modelSelects[task.key];
+        const current = select.value;
+        select.innerHTML = "";
+        select.appendChild(el("option", { value: "" }, "— escolher automaticamente —"));
+        for (const m of models) {
+          select.appendChild(el("option", { value: m, selected: m === current ? "selected" : undefined }, m));
+        }
+      }
+    } else {
+      dot.classList.add("is-bad");
+      label.innerHTML = "";
+      label.append("Não foi possível ligar — ", el("a", { href: "https://ollama.com/download" }, "instalar o Ollama"));
+    }
+  }
+  testBtn.addEventListener("click", refreshOllamaStatus);
+
+  engineCard.append(
+    statusRow,
+    el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px" }, "URL do Ollama"),
+    el("div", { style: "display:flex;gap:8px;margin-bottom:16px" }, [urlInput, testBtn]),
+    el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px" }, "Contexto (num_ctx)"),
+    numCtxInput,
+    el("h4", { style: "margin-top:20px;margin-bottom:4px;font-size:0.85rem" }, "Modelo por tarefa"),
+    modelsWrap
+  );
+  wrap.appendChild(engineCard);
+  refreshOllamaStatus();
+
+  // --- Limites do crawl ---
+  const crawlCard = el("div", { class: "card", style: "margin-top:20px" }, [el("h3", { style: "margin-bottom:14px" }, "Limites do crawl")]);
+  const maxPagesInput = el("input", { type: "number", value: settings.crawl.max_pages, style: "width:100px" });
+  const delayInput = el("input", { type: "number", step: "0.1", value: settings.crawl.delay_seconds, style: "width:100px" });
+  const robotsInput = el("input", { type: "checkbox" });
+  if (settings.crawl.respect_robots) robotsInput.checked = true;
+  crawlCard.append(
+    el("div", { class: "grid-2" }, [
+      el("div", {}, [el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px" }, "Máximo de páginas"), maxPagesInput]),
+      el("div", {}, [el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px" }, "Pausa entre páginas (s)"), delayInput]),
+    ]),
+    el("label", { style: "display:flex;align-items:center;gap:8px;margin-top:14px;font-size:0.85rem" }, [robotsInput, "Respeitar robots.txt"])
+  );
+  wrap.appendChild(crawlCard);
+
+  // --- Marca e serviços ---
+  const brandCard = el("div", { class: "card", style: "margin-top:20px" }, [el("h3", { style: "margin-bottom:14px" }, "Marca e serviços")]);
+  const appNameInput = el("input", { value: settings.app_name, style: "width:100%" });
+  const servicesInput = el("input", { value: settings.owner_services.join(", "), style: "width:100%" });
+  brandCard.append(
+    el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin-bottom:4px" }, "Nome da marca"),
+    appNameInput,
+    el("label", { style: "font-size:0.8rem;color:var(--muted);display:block;margin:14px 0 4px" }, "Serviços (usados nas oportunidades de venda, separados por vírgula)"),
+    servicesInput
+  );
+  wrap.appendChild(brandCard);
+
+  const saveBtn = el("button", { class: "btn btn--primary", style: "margin-top:20px" }, "Guardar definições");
+  saveBtn.addEventListener("click", async () => {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "A guardar…";
+    try {
+      const payload = {
+        app_name: appNameInput.value,
+        owner_services: servicesInput.value.split(",").map((s) => s.trim()).filter(Boolean),
+        llm: {
+          ...settings.llm,
+          ollama_url: urlInput.value,
+          num_ctx: Number(numCtxInput.value) || settings.llm.num_ctx,
+          tasks: Object.fromEntries(TASKS.map((t) => [t.key, { backend: settings.llm.tasks?.[t.key]?.backend || "ollama", model: modelSelects[t.key].value }])),
+        },
+        crawl: {
+          max_pages: Number(maxPagesInput.value) || settings.crawl.max_pages,
+          delay_seconds: Number(delayInput.value) || settings.crawl.delay_seconds,
+          respect_robots: robotsInput.checked,
+        },
+      };
+      settings = await saveSettings(payload);
+      showToast("Definições guardadas.");
+    } catch (err) {
+      showToast(err.message || "Não foi possível guardar.");
+    } finally {
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Guardar definições";
+    }
+  });
+  wrap.appendChild(saveBtn);
+}

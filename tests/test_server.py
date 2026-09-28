@@ -1,8 +1,10 @@
 import json
+import shutil
 
 import httpx
 import pytest
 
+import auditor.prompts as prompts_module
 import auditor.server as server_module
 from auditor.pipeline import PipelineEvent
 
@@ -18,6 +20,40 @@ async def client():
     transport = httpx.ASGITransport(app=server_module.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+@pytest.fixture
+def history_env(tmp_path, monkeypatch):
+    monkeypatch.setattr(server_module, "OUTPUT_DIR", tmp_path)
+    return tmp_path
+
+
+@pytest.fixture
+def prompts_env(tmp_path, monkeypatch):
+    tmp_prompts = tmp_path / "prompts"
+    tmp_defaults = tmp_prompts / "defaults"
+    tmp_defaults.mkdir(parents=True)
+    for name in prompts_module.list_template_names():
+        shutil.copy(prompts_module.PROMPTS_DIR / name, tmp_prompts / name)
+        shutil.copy(prompts_module.DEFAULTS_DIR / name, tmp_defaults / name)
+    monkeypatch.setattr(prompts_module, "PROMPTS_DIR", tmp_prompts)
+    monkeypatch.setattr(prompts_module, "DEFAULTS_DIR", tmp_defaults)
+    monkeypatch.setattr(server_module, "PROMPTS_DIR", tmp_prompts)
+    return tmp_prompts
+
+
+@pytest.fixture
+def settings_env(tmp_path, monkeypatch):
+    from auditor.appconfig import CONFIG_PATH as REAL_CONFIG_PATH
+    from auditor.appconfig import load_config as real_load_config
+    from auditor.appconfig import save_config as real_save_config
+
+    tmp_config = tmp_path / "config.yaml"
+    shutil.copy(REAL_CONFIG_PATH, tmp_config)
+
+    monkeypatch.setattr(server_module, "load_config", lambda: real_load_config(tmp_config))
+    monkeypatch.setattr(server_module, "save_config", lambda config: real_save_config(config, tmp_config))
+    return tmp_config
 
 
 @pytest.mark.asyncio
@@ -118,3 +154,131 @@ async def test_regenerate_ads_calls_generate_all_ads_and_returns_counts(monkeypa
 async def test_regenerate_ads_requires_profile_and_pages(client):
     resp = await client.post("/api/audit/regenerate-ads", json={"profile": None, "pages": None})
     assert resp.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# Histórico
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_history_is_empty_list_when_nothing_was_ever_audited(client, history_env):
+    resp = await client.get("/api/history")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+@pytest.mark.asyncio
+async def test_history_round_trip_via_pipeline_then_server(client, history_env):
+    from auditor.pipeline import _update_history_index
+
+    report = {"meta": {"domain": "example.pt", "audited_at": "2026-01-01T00:00:00Z", "communication_score": 70, "business_model": "leads"}}
+    _update_history_index(history_env, "example.pt", "current", report)
+    run_dir = history_env / "example.pt" / "current"
+    run_dir.mkdir(parents=True)
+    (run_dir / "audit.json").write_text(json.dumps(report), encoding="utf-8")
+
+    resp = await client.get("/api/history")
+    assert resp.status_code == 200
+    entries = resp.json()
+    assert len(entries) == 1
+    assert entries[0]["domain"] == "example.pt"
+    assert entries[0]["audit_id"] == "current"
+
+    resp2 = await client.get("/api/audits/example.pt/current")
+    assert resp2.status_code == 200
+    assert resp2.json()["meta"]["domain"] == "example.pt"
+
+    resp3 = await client.get("/api/audits/example.pt/does-not-exist")
+    assert resp3.status_code == 404
+
+    resp4 = await client.delete("/api/audits/example.pt/current")
+    assert resp4.status_code == 200
+    assert not run_dir.exists()
+
+    resp5 = await client.get("/api/history")
+    assert resp5.json() == []
+
+
+@pytest.mark.asyncio
+async def test_delete_unknown_audit_returns_404(client, history_env):
+    resp = await client.delete("/api/audits/nope.pt/current")
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Prompts
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_prompts_returns_all_seven_templates_marked_as_default(client, prompts_env):
+    resp = await client.get("/api/prompts")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 7
+    assert all(entry["is_default"] for entry in data.values())
+    assert "[SECTOR]" in data["02.1_search_leads.md"]["content"]
+
+
+@pytest.mark.asyncio
+async def test_save_prompt_then_reset_round_trip(client, prompts_env):
+    resp = await client.post("/api/prompts/02.1_search_leads.md", json={"content": "texto editado"})
+    assert resp.status_code == 200
+    assert resp.json()["is_default"] is False
+    assert (prompts_env / "02.1_search_leads.md").read_text(encoding="utf-8") == "texto editado"
+
+    resp2 = await client.get("/api/prompts")
+    assert resp2.json()["02.1_search_leads.md"]["content"] == "texto editado"
+    assert resp2.json()["02.1_search_leads.md"]["is_default"] is False
+
+    resp3 = await client.post("/api/prompts/02.1_search_leads.md/reset")
+    assert resp3.status_code == 200
+    assert resp3.json()["is_default"] is True
+    assert "[SECTOR]" in resp3.json()["content"]
+
+
+@pytest.mark.asyncio
+async def test_save_prompt_rejects_an_unknown_template_name(client, prompts_env):
+    resp = await client.post("/api/prompts/does-not-exist.md", json={"content": "x"})
+    assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Definições
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_settings_returns_the_expected_keys(client, settings_env):
+    resp = await client.get("/api/settings")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert set(data.keys()) == {"app_name", "owner_services", "llm", "crawl", "tracking"}
+    assert data["llm"]["backend"] == "ollama"
+
+
+@pytest.mark.asyncio
+async def test_update_settings_persists_to_disk(client, settings_env):
+    resp = await client.post("/api/settings", json={"app_name": "Auditor PT", "crawl": {"max_pages": 10, "delay_seconds": 2, "respect_robots": False}})
+    assert resp.status_code == 200
+    assert resp.json()["app_name"] == "Auditor PT"
+
+    resp2 = await client.get("/api/settings")
+    assert resp2.json()["app_name"] == "Auditor PT"
+    assert resp2.json()["crawl"]["max_pages"] == 10
+
+    from auditor.appconfig import load_config
+
+    saved = load_config(settings_env)
+    assert saved["app_name"] == "Auditor PT"
+    assert saved["crawl"]["max_pages"] == 10
+
+
+@pytest.mark.asyncio
+async def test_test_ollama_endpoint_reports_unreachable_when_nothing_is_listening(client, settings_env):
+    resp = await client.get("/api/settings/test-ollama", params={"ollama_url": "http://127.0.0.1:1"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["reachable"] is False
+    assert data["models"] == []

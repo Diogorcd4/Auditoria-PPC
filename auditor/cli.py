@@ -24,7 +24,7 @@ def serve(host: str = "127.0.0.1", port: int = 8000, no_browser: bool = False) -
 def audit(
     url: str,
     max_pages: int = 25,
-    only: str = typer.Option("", help="Lista de passos a correr, ex.: 02.1,02.5"),
+    only: str = typer.Option("", help="Lista de passos do pipeline a correr, ex.: crawl,tracking"),
     dry_run: bool = False,
     resume: bool = False,
     mock: bool = False,

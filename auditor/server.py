@@ -8,10 +8,18 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from auditor.ads import generate_all_ads
-from auditor.appconfig import build_llm_client, load_config, model_for_task
+from auditor.appconfig import build_llm_client, load_config, model_for_task, save_config
 from auditor.crawler import PageData
 from auditor.llm.mock import MockLLMClient
-from auditor.pipeline import PipelineConfig, count_ads_assets, run_pipeline
+from auditor.pipeline import (
+    PipelineConfig,
+    count_ads_assets,
+    delete_saved_audit,
+    load_history,
+    load_saved_audit,
+    run_pipeline,
+)
+from auditor.prompts import PROMPTS_DIR, TEMPLATE_PLACEHOLDERS, list_template_names, load_template
 from auditor.prompts import select_templates_for_profile
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
@@ -50,6 +58,11 @@ def _pipeline_config_from_app_config(url: str, max_pages: int, app_config: dict)
         model_for_task={task: model_for_task(app_config, task) for task in ("analise", "keywords", "perfil", "anuncios")},
         output_dir=OUTPUT_DIR,
         cache_dir=CACHE_DIR,
+        # A fixed slot per domain (rather than a fresh timestamp every time) is what makes
+        # reloading the page mid-audit "just reconnect" instead of starting over: the resumed
+        # run picks up from whichever steps already have a checkpoint (secção 5.5 do briefing).
+        audit_id="current",
+        resume=True,
     )
 
 
@@ -94,6 +107,84 @@ async def regenerate_ads(payload: dict = Body(...)) -> JSONResponse:
     ads = await generate_all_ads(llm, templates, profile, pages, model=model)
     valid, total = count_ads_assets(ads)
     return JSONResponse({"ads": ads, "ads_valid_count": valid, "ads_total_count": total})
+
+
+@app.get("/api/history")
+def get_history() -> JSONResponse:
+    return JSONResponse(load_history(OUTPUT_DIR))
+
+
+@app.get("/api/audits/{domain}/{audit_id}")
+def get_saved_audit(domain: str, audit_id: str) -> JSONResponse:
+    data = load_saved_audit(OUTPUT_DIR, domain, audit_id)
+    if data is None:
+        raise HTTPException(status_code=404, detail="Auditoria não encontrada.")
+    return JSONResponse(data)
+
+
+@app.delete("/api/audits/{domain}/{audit_id}")
+def remove_saved_audit(domain: str, audit_id: str) -> JSONResponse:
+    deleted = delete_saved_audit(OUTPUT_DIR, domain, audit_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Auditoria não encontrada.")
+    return JSONResponse({"deleted": True})
+
+
+SETTINGS_KEYS = {"app_name", "owner_services", "llm", "crawl", "tracking"}
+
+
+@app.get("/api/settings")
+def get_settings() -> JSONResponse:
+    config = load_config()
+    return JSONResponse({key: config[key] for key in SETTINGS_KEYS if key in config})
+
+
+@app.post("/api/settings")
+def update_settings(payload: dict = Body(...)) -> JSONResponse:
+    config = load_config()
+    for key in SETTINGS_KEYS:
+        if key in payload:
+            config[key] = payload[key]
+    save_config(config)
+    return JSONResponse({key: config[key] for key in SETTINGS_KEYS if key in config})
+
+
+@app.get("/api/settings/test-ollama")
+async def test_ollama(ollama_url: str = "") -> JSONResponse:
+    from auditor.llm import OllamaClient
+
+    base_url = ollama_url or load_config()["llm"]["ollama_url"]
+    client = OllamaClient(base_url=base_url)
+    reachable = await client.health_check()
+    models = await client.list_models() if reachable else []
+    return JSONResponse({"reachable": reachable, "models": models})
+
+
+@app.get("/api/prompts")
+def get_prompts() -> JSONResponse:
+    data = {}
+    for name in list_template_names():
+        content = load_template(name)
+        data[name] = {"content": content, "is_default": content == load_template(name, defaults=True)}
+    return JSONResponse(data)
+
+
+@app.post("/api/prompts/{name}")
+def save_prompt(name: str, payload: dict = Body(...)) -> JSONResponse:
+    if name not in TEMPLATE_PLACEHOLDERS:
+        raise HTTPException(status_code=404, detail="Template desconhecido.")
+    content = payload.get("content", "")
+    (PROMPTS_DIR / name).write_text(content, encoding="utf-8")
+    return JSONResponse({"content": content, "is_default": content == load_template(name, defaults=True)})
+
+
+@app.post("/api/prompts/{name}/reset")
+def reset_prompt(name: str) -> JSONResponse:
+    if name not in TEMPLATE_PLACEHOLDERS:
+        raise HTTPException(status_code=404, detail="Template desconhecido.")
+    default_content = load_template(name, defaults=True)
+    (PROMPTS_DIR / name).write_text(default_content, encoding="utf-8")
+    return JSONResponse({"content": default_content, "is_default": True})
 
 
 # Routing is hash-based (#/demo, #/history...), so the server only ever needs to serve

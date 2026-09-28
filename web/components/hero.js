@@ -73,7 +73,7 @@ export async function renderHero(root) {
   } else {
     for (const audit of recentAudits) {
       recentsGrid.appendChild(
-        el("a", { class: "card recent-card", href: `#/audit/${audit.id}` }, [
+        el("a", { class: "card recent-card", href: `#/report/${encodeURIComponent(audit.domain)}/${encodeURIComponent(audit.audit_id)}` }, [
           el("div", { class: "recent-card__domain" }, audit.domain),
           el("div", { class: "recent-card__meta" }, [el("span", {}, audit.date), el("span", {}, `${audit.score}/100`)]),
         ])
