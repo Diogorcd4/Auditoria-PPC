@@ -1,0 +1,1757 @@
+{
+  "meta": {
+    "domain": "clinicasorriso.pt",
+    "url": "https://www.clinicasorriso.pt",
+    "audited_at": "2026-09-20T10:15:00+01:00",
+    "duration_seconds": 812,
+    "demo": true,
+    "business_model": "leads",
+    "communication_score": 68,
+    "pages_analyzed": 9,
+    "tracking_platforms_detected": 3,
+    "tracking_platforms_total": 6,
+    "opportunities_count": 7,
+    "ads_valid_count": 83,
+    "ads_total_count": 86
+  },
+  "summary": {
+    "strengths": [
+      "A landing page de conversão (consulta-gratuita) cobre bem as 7 categorias de comunicação.",
+      "O medo do dentista, o problema central da persona, é reconhecido logo na home.",
+      "A objecção de custo é respondida com planos de pagamento em prestações."
+    ],
+    "weaknesses": [
+      "Nenhuma página indica uma gama de preços, nem indicativa.",
+      "A página 'Sobre' constrói autoridade mas não converte, por não ter CTA.",
+      "O Meta Pixel está instalado mas não dispara nenhum evento observável."
+    ],
+    "top_opportunities": [
+      "Configurar eventos de conversão no Google Ads e no Meta Pixel antes de investir em campanhas.",
+      "Adicionar um CTA à página Sobre para captar quem já está convencido pela autoridade da clínica.",
+      "Indicar uma gama de preços indicativa para reduzir fricção em quem pesquisa custo."
+    ]
+  },
+  "pages": [
+    {
+      "id": "home",
+      "url": "https://www.clinicasorriso.pt/",
+      "type": "home",
+      "title": "Clínica Sorriso — Medicina Dentária em Lisboa",
+      "meta_description": "Clínica dentária em Lisboa especializada em implantologia e ortodontia, com sedação consciente e planos de pagamento.",
+      "h1": "Recupere o seu sorriso, sem medo e sem dor",
+      "word_count": 480
+    },
+    {
+      "id": "servico-implantologia",
+      "url": "https://www.clinicasorriso.pt/servicos/implantologia",
+      "type": "servico",
+      "title": "Implantologia Dentária — Clínica Sorriso",
+      "meta_description": "Implantes dentários com sedação consciente, tecnologia de última geração e acompanhamento personalizado.",
+      "h1": "Implantologia sem dor, do diagnóstico ao sorriso final",
+      "word_count": 620
+    },
+    {
+      "id": "servico-ortodontia",
+      "url": "https://www.clinicasorriso.pt/servicos/ortodontia",
+      "type": "servico",
+      "title": "Ortodontia para Adultos e Crianças — Clínica Sorriso",
+      "meta_description": "Aparelhos dentários tradicionais e invisíveis para todas as idades.",
+      "h1": "Ortodontia para todas as idades",
+      "word_count": 410
+    },
+    {
+      "id": "precos",
+      "url": "https://www.clinicasorriso.pt/precos",
+      "type": "precos",
+      "title": "Preços — Clínica Sorriso",
+      "meta_description": "Conheça os planos de pagamento da Clínica Sorriso.",
+      "h1": "Planos de pagamento flexíveis",
+      "word_count": 210
+    },
+    {
+      "id": "sobre",
+      "url": "https://www.clinicasorriso.pt/sobre-nos",
+      "type": "sobre",
+      "title": "Sobre Nós — Clínica Sorriso",
+      "meta_description": "Há 15 anos a devolver sorrisos em Lisboa, com uma equipa multidisciplinar certificada.",
+      "h1": "15 anos a cuidar de sorrisos em Lisboa",
+      "word_count": 540
+    },
+    {
+      "id": "contacto",
+      "url": "https://www.clinicasorriso.pt/contacto",
+      "type": "contacto",
+      "title": "Contactos — Clínica Sorriso",
+      "meta_description": "Marque a sua consulta de avaliação gratuita.",
+      "h1": "Fale connosco",
+      "word_count": 160
+    },
+    {
+      "id": "faq",
+      "url": "https://www.clinicasorriso.pt/perguntas-frequentes",
+      "type": "faq",
+      "title": "Perguntas Frequentes — Clínica Sorriso",
+      "meta_description": "Respostas às dúvidas mais comuns sobre implantes, dor e preços.",
+      "h1": "Perguntas frequentes",
+      "word_count": 390
+    },
+    {
+      "id": "blog-como-escolher",
+      "url": "https://www.clinicasorriso.pt/blog/como-escolher-clinica-dentaria",
+      "type": "blog",
+      "title": "Como Escolher uma Clínica Dentária — Blog Clínica Sorriso",
+      "meta_description": "Um guia com os critérios essenciais para escolher uma clínica dentária de confiança.",
+      "h1": "Como escolher uma clínica dentária de confiança",
+      "word_count": 890
+    },
+    {
+      "id": "landing-consulta-gratuita",
+      "url": "https://www.clinicasorriso.pt/consulta-gratuita",
+      "type": "landing",
+      "title": "Consulta de Avaliação Gratuita — Clínica Sorriso",
+      "meta_description": "Marque hoje a sua consulta de avaliação gratuita e sem compromisso.",
+      "h1": "A sua consulta de avaliação é gratuita",
+      "word_count": 340
+    }
+  ],
+  "tracking": {
+    "ga4": {
+      "platform": "Google Analytics 4",
+      "detected": true,
+      "id": "G-8K3PQ2X7L1",
+      "state": "A disparar sem consentimento",
+      "evidence": [
+        "Pedido de rede para google-analytics.com/g/collect (abortado propositadamente) com tid=G-8K3PQ2X7L1",
+        "window.dataLayer contém eventos gtag('config', 'G-8K3PQ2X7L1') antes de qualquer interação com o banner de cookies"
+      ],
+      "observed_on": [
+        "home",
+        "landing-consulta-gratuita",
+        "contacto"
+      ]
+    },
+    "ua": {
+      "platform": "Universal Analytics",
+      "detected": false,
+      "id": null,
+      "state": "Não detetado",
+      "evidence": [],
+      "note": "Sem vestígios de UA-XXXX no código; expectável, já que deixou de recolher dados desde 2023."
+    },
+    "gtm": {
+      "platform": "Google Tag Manager",
+      "detected": true,
+      "id": "GTM-N5QHZR2",
+      "state": "Detetado",
+      "evidence": [
+        "<script> a carregar googletagmanager.com/gtm.js?id=GTM-N5QHZR2 no <head>",
+        "<noscript> com iframe do GTM logo após a abertura do <body>",
+        "window.google_tag_manager['GTM-N5QHZR2'] presente no runtime"
+      ],
+      "container_contents_inferred": [
+        "Google Analytics 4 (G-8K3PQ2X7L1)",
+        "Meta Pixel"
+      ],
+      "observed_on": [
+        "home",
+        "landing-consulta-gratuita",
+        "contacto"
+      ]
+    },
+    "google_ads": {
+      "platform": "Google Ads",
+      "detected": false,
+      "id": null,
+      "state": "Não detetado",
+      "evidence": [],
+      "note": "Nenhuma tag AW-XXXX nem pedido a googleadservices.com/pagead/conversion observado."
+    },
+    "meta_pixel": {
+      "platform": "Meta Pixel",
+      "detected": true,
+      "id": "742108839561203",
+      "state": "No código, sem disparo observado",
+      "evidence": [
+        "fbevents.js carregado a partir do contentor GTM-N5QHZR2 (inferido do container)",
+        "window.fbq definido no runtime, mas sem chamada fbq('track', ...) capturada em nenhuma das páginas visitadas"
+      ],
+      "events_observed": [],
+      "observed_on": [
+        "home",
+        "landing-consulta-gratuita",
+        "contacto"
+      ]
+    },
+    "microsoft_uet": {
+      "platform": "Microsoft Advertising (UET)",
+      "detected": false,
+      "id": null,
+      "state": "Não detetado",
+      "evidence": []
+    },
+    "consent_mode": {
+      "detected": false,
+      "state": "Não detetado",
+      "note": "Sem parâmetros gcd/gcs nos pedidos de rede observados; o GA4 dispara antes de qualquer escolha de consentimento."
+    },
+    "cmp": {
+      "name": "Não identificada (banner próprio, sem CMP reconhecida)",
+      "cookie_banner_detected": true,
+      "accept_all_selector_used": "button.cookie-accept-all"
+    },
+    "extras": [
+      {
+        "platform": "Microsoft Clarity",
+        "detected": false,
+        "state": "Não detetado"
+      },
+      {
+        "platform": "Hotjar",
+        "detected": false,
+        "state": "Não detetado"
+      },
+      {
+        "platform": "TikTok Pixel",
+        "detected": false,
+        "state": "Não detetado"
+      },
+      {
+        "platform": "LinkedIn Insight",
+        "detected": false,
+        "state": "Não detetado"
+      }
+    ],
+    "ecommerce_events_in_datalayer": [],
+    "not_visible_note": "Esta ferramenta não vê tagging do lado do servidor (server-side tagging), a Conversions API do Meta, nem a configuração feita dentro das contas de Google Ads, Meta Ads ou Microsoft Advertising."
+  },
+  "communication": {
+    "pages": [
+      {
+        "page_id": "home",
+        "categories": {
+          "problemas": {
+            "level": "forte",
+            "evidence": "Abre com 'sem medo e sem dor', nomeando o receio do dentista logo no H1.",
+            "recommendation": "Manter este enquadramento também no primeiro parágrafo visível, hoje um pouco abaixo da dobra."
+          },
+          "caracteristicas": {
+            "level": "fraco",
+            "evidence": "Menciona sedação consciente, mas sem detalhar os serviços disponíveis.",
+            "recommendation": "Acrescentar uma secção de serviços com ligação directa a cada página de serviço."
+          },
+          "motivos_para_comprar": {
+            "level": "fraco",
+            "evidence": "Não consta no site um motivo concreto para agir hoje em vez de mais tarde.",
+            "recommendation": "Adicionar um motivo de ação imediata, ex. vagas limitadas na agenda do mês."
+          },
+          "objeccoes_e_receios": {
+            "level": "forte",
+            "evidence": "Aborda directamente o medo do dentista e a dor associada a tratamentos.",
+            "recommendation": "Reforçar com um testemunho em vídeo na própria home."
+          },
+          "desejos": {
+            "level": "forte",
+            "evidence": "'Recupere o seu sorriso' comunica o resultado desejado com clareza.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "crencas_e_mentalidade": {
+            "level": "nao_aplicavel",
+            "evidence": "Não consta no site.",
+            "recommendation": "Não aplicável a esta página."
+          },
+          "oportunidades": {
+            "level": "ausente",
+            "evidence": "Não há qualquer menção ao custo de adiar o tratamento.",
+            "recommendation": "Acrescentar um parágrafo sobre as consequências de adiar (agravamento, custo futuro maior)."
+          }
+        },
+        "cta_analysis": {
+          "clarity": "forte",
+          "position": "acima da dobra",
+          "note": "CTA 'Marcar Consulta Gratuita' claro e coerente com a intenção da página."
+        }
+      },
+      {
+        "page_id": "servico-implantologia",
+        "categories": {
+          "problemas": {
+            "level": "fraco",
+            "evidence": "Refere 'dentes em falta' de forma genérica, sem detalhar o impacto no dia a dia.",
+            "recommendation": "Descrever consequências concretas (dificuldade a mastigar, perda de confiança ao sorrir)."
+          },
+          "caracteristicas": {
+            "level": "forte",
+            "evidence": "Lista sedação consciente, tecnologia de imagem 3D e garantia de 5 anos.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "motivos_para_comprar": {
+            "level": "fraco",
+            "evidence": "Não consta no site um incentivo concreto para agendar já.",
+            "recommendation": "Adicionar uma oferta ou prazo para a avaliação gratuita."
+          },
+          "objeccoes_e_receios": {
+            "level": "forte",
+            "evidence": "Secção dedicada a 'é doloroso?' e 'quanto tempo demora?'.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "desejos": {
+            "level": "fraco",
+            "evidence": "O resultado final (sorriso natural) é mencionado uma vez, sem imagens de antes/depois.",
+            "recommendation": "Acrescentar galeria de casos reais com consentimento dos pacientes."
+          },
+          "crencas_e_mentalidade": {
+            "level": "ausente",
+            "evidence": "Não consta no site.",
+            "recommendation": "Explicar porque a implantologia é hoje mais segura do que a crença comum sugere."
+          },
+          "oportunidades": {
+            "level": "fraco",
+            "evidence": "Refere apenas que 'dentes em falta podem agravar-se'.",
+            "recommendation": "Detalhar o custo de tratamentos mais complexos se a decisão for adiada."
+          }
+        },
+        "cta_analysis": {
+          "clarity": "forte",
+          "position": "meio e fim da página",
+          "note": "Dois CTAs coerentes: 'Marcar Avaliação' e 'Falar com um Especialista'."
+        }
+      },
+      {
+        "page_id": "servico-ortodontia",
+        "categories": {
+          "problemas": {
+            "level": "fraco",
+            "evidence": "Menciona 'dentes desalinhados' sem ligar a uma dor ou frustração específica.",
+            "recommendation": "Acrescentar testemunhos sobre o impacto na autoestima."
+          },
+          "caracteristicas": {
+            "level": "forte",
+            "evidence": "Distingue aparelho tradicional e invisível, com prazos indicativos.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "motivos_para_comprar": {
+            "level": "ausente",
+            "evidence": "Não consta no site.",
+            "recommendation": "Adicionar motivo de ação (ex. início de tratamento antes do verão)."
+          },
+          "objeccoes_e_receios": {
+            "level": "fraco",
+            "evidence": "Não aborda o receio comum sobre o custo total do tratamento.",
+            "recommendation": "Acrescentar uma simulação de custo por mês."
+          },
+          "desejos": {
+            "level": "forte",
+            "evidence": "'Um sorriso alinhado, para todas as idades' comunica o desejo com clareza.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "crencas_e_mentalidade": {
+            "level": "fraco",
+            "evidence": "Refere que 'ortodontia não é só para crianças', desmontando uma crença comum.",
+            "recommendation": "Expandir com dados ou exemplos de pacientes adultos."
+          },
+          "oportunidades": {
+            "level": "ausente",
+            "evidence": "Não consta no site.",
+            "recommendation": "Explicar o que se perde ao adiar (agravamento do desalinhamento)."
+          }
+        },
+        "cta_analysis": {
+          "clarity": "fraco",
+          "position": "apenas no fim da página",
+          "note": "Falta um CTA intermédio para quem decide agir antes de ler tudo."
+        }
+      },
+      {
+        "page_id": "precos",
+        "categories": {
+          "problemas": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "caracteristicas": {
+            "level": "fraco",
+            "evidence": "Refere 'planos de pagamento flexíveis' sem indicar valores.",
+            "recommendation": "Não consta no site nenhum valor; considerar indicar uma gama de preços indicativa."
+          },
+          "motivos_para_comprar": {
+            "level": "ausente",
+            "evidence": "Não consta no site.",
+            "recommendation": "Acrescentar uma vantagem por marcar avaliação antes de decidir o plano."
+          },
+          "objeccoes_e_receios": {
+            "level": "forte",
+            "evidence": "Aborda directamente a objecção de custo com menção a financiamento em prestações.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "desejos": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "crencas_e_mentalidade": {
+            "level": "ausente",
+            "evidence": "Não consta no site.",
+            "recommendation": "Desmontar a crença de que tratamento dentário de qualidade é inacessível."
+          },
+          "oportunidades": {
+            "level": "ausente",
+            "evidence": "Não consta no site.",
+            "recommendation": "Não aplicável de forma directa nesta página."
+          }
+        },
+        "cta_analysis": {
+          "clarity": "fraco",
+          "position": "fim da página",
+          "note": "CTA genérico 'Contacte-nos', pouco específico face à intenção transacional da página."
+        }
+      },
+      {
+        "page_id": "sobre",
+        "categories": {
+          "problemas": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "caracteristicas": {
+            "level": "fraco",
+            "evidence": "Menciona a equipa e o ano de fundação, sem detalhar certificações.",
+            "recommendation": "Adicionar certificações e especializações de cada dentista."
+          },
+          "motivos_para_comprar": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "objeccoes_e_receios": {
+            "level": "ausente",
+            "evidence": "Não consta no site.",
+            "recommendation": "Não aplicável de forma directa nesta página."
+          },
+          "desejos": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "crencas_e_mentalidade": {
+            "level": "forte",
+            "evidence": "'15 anos a devolver sorrisos' constrói autoridade e confiança.",
+            "recommendation": "Reforçar com números concretos (nº de pacientes tratados, avaliações)."
+          },
+          "oportunidades": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          }
+        },
+        "cta_analysis": {
+          "clarity": "ausente",
+          "position": "sem CTA",
+          "note": "Página sem qualquer chamada à ação; perde-se a oportunidade de converter quem lê para se convencer da autoridade da clínica."
+        }
+      },
+      {
+        "page_id": "contacto",
+        "categories": {
+          "problemas": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "caracteristicas": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "motivos_para_comprar": {
+            "level": "ausente",
+            "evidence": "Não consta no site.",
+            "recommendation": "Adicionar um motivo de contacto imediato (ex. resposta em 24h)."
+          },
+          "objeccoes_e_receios": {
+            "level": "fraco",
+            "evidence": "O formulário pede muitos campos, o que pode gerar fricção.",
+            "recommendation": "Reduzir o formulário aos campos essenciais (nome, contacto, motivo)."
+          },
+          "desejos": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "crencas_e_mentalidade": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "oportunidades": {
+            "level": "ausente",
+            "evidence": "Não consta no site.",
+            "recommendation": "Não aplicável de forma directa nesta página."
+          }
+        },
+        "cta_analysis": {
+          "clarity": "forte",
+          "position": "acima da dobra",
+          "note": "Formulário e telefone visíveis de imediato; reduzir campos aumentaria a conversão."
+        }
+      },
+      {
+        "page_id": "faq",
+        "categories": {
+          "problemas": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "caracteristicas": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "motivos_para_comprar": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "objeccoes_e_receios": {
+            "level": "forte",
+            "evidence": "Responde a 'dói?', 'quanto custa?' e 'quanto tempo demora?'.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "desejos": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "crencas_e_mentalidade": {
+            "level": "fraco",
+            "evidence": "Uma pergunta desmonta o mito de que implantes são sempre dolorosos.",
+            "recommendation": "Acrescentar mais perguntas que desmontem crenças comuns sobre custo e duração."
+          },
+          "oportunidades": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          }
+        },
+        "cta_analysis": {
+          "clarity": "fraco",
+          "position": "sem CTA visível",
+          "note": "Depois de esclarecer dúvidas, não há convite claro para agendar consulta."
+        }
+      },
+      {
+        "page_id": "blog-como-escolher",
+        "categories": {
+          "problemas": {
+            "level": "fraco",
+            "evidence": "Aborda a dificuldade em escolher clínica, mas de forma genérica.",
+            "recommendation": "Ligar mais explicitamente às dores específicas da persona da clínica."
+          },
+          "caracteristicas": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "motivos_para_comprar": {
+            "level": "ausente",
+            "evidence": "Não consta no site.",
+            "recommendation": "Terminar o artigo com uma razão concreta para escolher a Clínica Sorriso."
+          },
+          "objeccoes_e_receios": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "desejos": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          },
+          "crencas_e_mentalidade": {
+            "level": "forte",
+            "evidence": "Desconstrói a ideia de que 'todas as clínicas são iguais'.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "oportunidades": {
+            "level": "nao_aplicavel",
+            "evidence": "Não aplicável a esta página.",
+            "recommendation": "Não aplicável."
+          }
+        },
+        "cta_analysis": {
+          "clarity": "ausente",
+          "position": "sem CTA",
+          "note": "Artigo bem escrito mas sem ligação para nenhuma página de serviço ou de contacto."
+        }
+      },
+      {
+        "page_id": "landing-consulta-gratuita",
+        "categories": {
+          "problemas": {
+            "level": "forte",
+            "evidence": "Abre reconhecendo o adiamento do tratamento por medo ou falta de tempo.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "caracteristicas": {
+            "level": "forte",
+            "evidence": "Resume sedação consciente, avaliação gratuita e planos de pagamento.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "motivos_para_comprar": {
+            "level": "forte",
+            "evidence": "Indica vagas limitadas na agenda do mês corrente.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "objeccoes_e_receios": {
+            "level": "forte",
+            "evidence": "Bloco de perguntas frequentes específico da landing.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "desejos": {
+            "level": "forte",
+            "evidence": "'A sua consulta de avaliação é gratuita' remove a barreira ao primeiro passo.",
+            "recommendation": "Nenhuma alteração necessária."
+          },
+          "crencas_e_mentalidade": {
+            "level": "fraco",
+            "evidence": "Uma frase sobre segurança da sedação consciente, sem prova adicional.",
+            "recommendation": "Acrescentar um selo ou certificação visível."
+          },
+          "oportunidades": {
+            "level": "forte",
+            "evidence": "Explica o agravamento do problema dentário se a avaliação for adiada.",
+            "recommendation": "Nenhuma alteração necessária."
+          }
+        },
+        "cta_analysis": {
+          "clarity": "forte",
+          "position": "acima e abaixo da dobra",
+          "note": "Landing bem construída; é a página correctamente escolhida como destino dos anúncios."
+        }
+      }
+    ],
+    "site_synthesis": {
+      "insights": {
+        "problemas": [
+          {
+            "text": "Medo do dentista e da dor associada a tratamentos",
+            "source_page": "home"
+          },
+          {
+            "text": "Dentes em falta afectam a confiança e a mastigação",
+            "source_page": "servico-implantologia"
+          }
+        ],
+        "caracteristicas": [
+          {
+            "text": "Sedação consciente disponível em todos os tratamentos",
+            "source_page": "servico-implantologia"
+          },
+          {
+            "text": "Aparelho tradicional e invisível, para todas as idades",
+            "source_page": "servico-ortodontia"
+          }
+        ],
+        "motivos_para_comprar": [
+          {
+            "text": "Vagas limitadas na agenda do mês corrente",
+            "source_page": "landing-consulta-gratuita"
+          }
+        ],
+        "objeccoes_e_receios": [
+          {
+            "text": "Custo elevado, mitigado por planos de pagamento em prestações",
+            "source_page": "precos"
+          },
+          {
+            "text": "Dor associada aos tratamentos, respondida com sedação consciente",
+            "source_page": "faq"
+          }
+        ],
+        "desejos": [
+          {
+            "text": "Recuperar a confiança ao sorrir",
+            "source_page": "home"
+          },
+          {
+            "text": "Um sorriso alinhado, a qualquer idade",
+            "source_page": "servico-ortodontia"
+          }
+        ],
+        "crencas_e_mentalidade": [
+          {
+            "text": "15 anos de experiência constroem autoridade e confiança",
+            "source_page": "sobre"
+          },
+          {
+            "text": "Nem todas as clínicas são iguais",
+            "source_page": "blog-como-escolher"
+          }
+        ],
+        "oportunidades": [
+          {
+            "text": "Adiar o tratamento pode agravar o problema e o custo futuro",
+            "source_page": "landing-consulta-gratuita"
+          }
+        ]
+      },
+      "global_gaps": [
+        "Não há valores de preços indicados em nenhuma página (nem uma gama indicativa).",
+        "Faltam imagens de antes/depois ou casos reais em qualquer página de serviço.",
+        "A página 'Sobre' não tem qualquer chamada à ação."
+      ],
+      "message_inconsistencies": [
+        "A home promete 'sem dor', mas a página de preços não reforça nenhum motivo de ação imediata, criando uma quebra de ritmo entre a promessa e a conversão."
+      ],
+      "top_improvements": [
+        {
+          "title": "Adicionar CTA na página Sobre",
+          "impact": "alto",
+          "effort": "baixo",
+          "page": "sobre"
+        },
+        {
+          "title": "Reduzir campos do formulário de contacto",
+          "impact": "alto",
+          "effort": "baixo",
+          "page": "contacto"
+        },
+        {
+          "title": "Indicar gama de preços indicativa",
+          "impact": "alto",
+          "effort": "médio",
+          "page": "precos"
+        },
+        {
+          "title": "Adicionar galeria de antes/depois",
+          "impact": "alto",
+          "effort": "médio",
+          "page": "servico-implantologia"
+        },
+        {
+          "title": "Adicionar CTA intermédio",
+          "impact": "médio",
+          "effort": "baixo",
+          "page": "servico-ortodontia"
+        },
+        {
+          "title": "Ligar o artigo de blog a uma página de serviço",
+          "impact": "médio",
+          "effort": "baixo",
+          "page": "blog-como-escolher"
+        },
+        {
+          "title": "Adicionar motivo de ação imediata na home",
+          "impact": "médio",
+          "effort": "baixo",
+          "page": "home"
+        },
+        {
+          "title": "Adicionar mais perguntas à FAQ sobre custo e duração",
+          "impact": "médio",
+          "effort": "baixo",
+          "page": "faq"
+        },
+        {
+          "title": "Adicionar selo ou certificação de segurança na landing",
+          "impact": "baixo",
+          "effort": "baixo",
+          "page": "landing-consulta-gratuita"
+        },
+        {
+          "title": "Detalhar certificações da equipa na página Sobre",
+          "impact": "baixo",
+          "effort": "médio",
+          "page": "sobre"
+        }
+      ]
+    }
+  },
+  "business_categories": {
+    "problemas": [
+      {
+        "text": "Medo do dentista e da dor associada a tratamentos",
+        "source_page": "home"
+      },
+      {
+        "text": "Dentes em falta afectam a confiança e a mastigação",
+        "source_page": "servico-implantologia"
+      }
+    ],
+    "caracteristicas": [
+      {
+        "text": "Sedação consciente disponível em todos os tratamentos",
+        "source_page": "servico-implantologia"
+      },
+      {
+        "text": "Aparelho tradicional e invisível, para todas as idades",
+        "source_page": "servico-ortodontia"
+      }
+    ],
+    "motivos_para_comprar": [
+      {
+        "text": "Vagas limitadas na agenda do mês corrente",
+        "source_page": "landing-consulta-gratuita"
+      }
+    ],
+    "objeccoes_e_receios": [
+      {
+        "text": "Custo elevado, mitigado por planos de pagamento em prestações",
+        "source_page": "precos"
+      },
+      {
+        "text": "Dor associada aos tratamentos, respondida com sedação consciente",
+        "source_page": "faq"
+      }
+    ],
+    "desejos": [
+      {
+        "text": "Recuperar a confiança ao sorrir",
+        "source_page": "home"
+      },
+      {
+        "text": "Um sorriso alinhado, a qualquer idade",
+        "source_page": "servico-ortodontia"
+      }
+    ],
+    "crencas_e_mentalidade": [
+      {
+        "text": "15 anos de experiência constroem autoridade e confiança",
+        "source_page": "sobre"
+      },
+      {
+        "text": "Nem todas as clínicas são iguais",
+        "source_page": "blog-como-escolher"
+      }
+    ],
+    "oportunidades": [
+      {
+        "text": "Adiar o tratamento pode agravar o problema e o custo futuro",
+        "source_page": "landing-consulta-gratuita"
+      }
+    ]
+  },
+  "keywords": {
+    "observed": [
+      {
+        "term": "clínica dentária lisboa",
+        "stage": "solucao"
+      },
+      {
+        "term": "implantes dentários preço",
+        "stage": "decisao"
+      },
+      {
+        "term": "dentista sem dor lisboa",
+        "stage": "solucao"
+      },
+      {
+        "term": "quanto custa um implante dentário",
+        "stage": "decisao"
+      },
+      {
+        "term": "melhor clínica dentária lisboa opiniões",
+        "stage": "comparacao"
+      },
+      {
+        "term": "aparelho dentário invisível preço",
+        "stage": "decisao"
+      },
+      {
+        "term": "dentista perto de mim",
+        "stage": "transacional"
+      },
+      {
+        "term": "clínica dentária com sedação consciente",
+        "stage": "solucao"
+      }
+    ],
+    "inferred": {
+      "problema": [
+        "tenho medo de ir ao dentista",
+        "dentes em falta o que fazer",
+        "dói fazer um implante dentário"
+      ],
+      "solucao": [
+        "tratamento dentário sem dor",
+        "sedação consciente no dentista",
+        "implantologia dentária lisboa"
+      ],
+      "comparacao": [
+        "implante dentário vs ponte fixa",
+        "melhor clínica dentária lisboa opiniões",
+        "aparelho invisível vs tradicional"
+      ],
+      "decisao": [
+        "marcar consulta avaliação dentária gratuita",
+        "preço implante dentário lisboa",
+        "financiamento tratamento dentário"
+      ],
+      "transacional_local": [
+        "clínica dentária lisboa marcações online",
+        "dentista lisboa consulta hoje"
+      ]
+    },
+    "gaps": [
+      "Sem página dedicada a 'branqueamento dentário', termo com procura relacionada observada.",
+      "Sem conteúdo sobre 'urgência dentária', tema com intenção transacional forte."
+    ],
+    "negatives": [
+      "grátis sem consulta",
+      "curso",
+      "emprego",
+      "faculdade",
+      "estágio"
+    ],
+    "note": "Sem dados de volume de pesquisa nesta auditoria; validar as prioridades no Keyword Planner antes de orçamentar campanhas."
+  },
+  "opportunities": [
+    {
+      "service": "Google Ads",
+      "evidence": "Nenhuma tag AW-XXXX nem pedido de conversão do Google Ads detetado no site.",
+      "priority": "Alta",
+      "pitch": "Instalar a tag de conversões do Google Ads antes de qualquer campanha, para medir leads e permitir remarketing."
+    },
+    {
+      "service": "Meta Ads",
+      "evidence": "O Meta Pixel está no código (via GTM) mas nenhum evento (PageView, Lead) foi observado a disparar.",
+      "priority": "Alta",
+      "pitch": "Configurar os eventos de PageView e Lead no Pixel para que as campanhas de Meta Ads tenham dados de conversão desde o primeiro dia."
+    },
+    {
+      "service": "Microsoft Advertising",
+      "evidence": "Nenhuma tag UET da Microsoft Advertising detetada no site.",
+      "priority": "Média",
+      "pitch": "Instalar a tag UET permite testar o Microsoft Advertising com o mesmo tracking base do Google Ads."
+    },
+    {
+      "service": "Tracking e Analytics",
+      "evidence": "O GA4 dispara antes de qualquer escolha de consentimento e sem Consent Mode v2 implementado.",
+      "priority": "Alta",
+      "pitch": "Implementar o Consent Mode v2 é especialmente relevante para campanhas dirigidas a audiências no EEE."
+    },
+    {
+      "service": "Tracking e Analytics",
+      "evidence": "O GA4 dispara sem aguardar consentimento explícito do visitante.",
+      "priority": "Média",
+      "pitch": "Validar com um jurista se o disparo antes do consentimento está em conformidade com o RGPD."
+    },
+    {
+      "service": "Copy e conversão",
+      "evidence": "A página 'Sobre' não tem qualquer chamada à ação, apesar de construir autoridade.",
+      "priority": "Média",
+      "pitch": "Adicionar um CTA à página Sobre para não perder quem chega a ela já convencido."
+    },
+    {
+      "service": "Copy e conversão",
+      "evidence": "Nenhuma página do site indica uma gama de preços, mesmo indicativa.",
+      "priority": "Baixa",
+      "pitch": "Uma gama de preços indicativa reduz a fricção de quem pesquisa 'quanto custa' antes de contactar."
+    }
+  ],
+  "profile": {
+    "sector": {
+      "value": "clínicas dentárias",
+      "origin": "site",
+      "confidence": 0.95
+    },
+    "empresa": {
+      "value": "Clínica Sorriso",
+      "origin": "site",
+      "confidence": 0.99
+    },
+    "publico": {
+      "value": "Adultos com receio de tratamentos dentários",
+      "origin": "inferido",
+      "confidence": 0.8
+    },
+    "descricao_publico": {
+      "value": "adultos entre 30 e 55 anos que adiam tratamentos dentários por medo ou por experiências passadas negativas",
+      "origin": "inferido",
+      "confidence": 0.7
+    },
+    "acao": {
+      "value": "marcar uma consulta de avaliação gratuita",
+      "origin": "site",
+      "confidence": 0.95
+    },
+    "geografia": {
+      "value": "Lisboa, Portugal",
+      "origin": "inferido",
+      "confidence": 0.85
+    },
+    "landing_page_url": {
+      "value": "https://www.clinicasorriso.pt/consulta-gratuita",
+      "origin": "inferido",
+      "confidence": 0.9
+    },
+    "pagina_destino": {
+      "value": "https://www.clinicasorriso.pt/consulta-gratuita",
+      "origin": "inferido",
+      "confidence": 0.9
+    },
+    "produto_ou_servico": {
+      "value": "implantologia dentária",
+      "origin": "site",
+      "confidence": 0.9
+    },
+    "preco": {
+      "value": "não indicado no site",
+      "origin": "default",
+      "confidence": 1.0
+    },
+    "idade": {
+      "value": "30-55 anos",
+      "origin": "inferido",
+      "confidence": 0.6
+    },
+    "perfil": {
+      "value": "profissionais urbanos com rendimento médio-alto",
+      "origin": "inferido",
+      "confidence": 0.55
+    },
+    "nivel_poder_compra": {
+      "value": "médio-alto",
+      "origin": "inferido",
+      "confidence": 0.55
+    },
+    "motivacao": {
+      "value": "recuperar a confiança no sorriso sem dor nem tempo de espera",
+      "origin": "inferido",
+      "confidence": 0.75
+    },
+    "objecao": {
+      "value": "medo de dor e custo elevado",
+      "origin": "site",
+      "confidence": 0.85
+    },
+    "comportamento_online": {
+      "value": "pesquisa no Google e no Instagram antes de decidir, lê avaliações",
+      "origin": "inferido",
+      "confidence": 0.6
+    },
+    "objetivo_conversao": {
+      "value": "Pedir Orçamento",
+      "origin": "inferido",
+      "confidence": 0.7
+    },
+    "fonte_dados_clientes": {
+      "value": "lista de clientes",
+      "origin": "default",
+      "confidence": 0.5
+    },
+    "fonte_dados_subscritores": {
+      "value": "lista de subscritores da newsletter",
+      "origin": "default",
+      "confidence": 0.5
+    },
+    "conteudo_a_promover": {
+      "value": "artigo do blog sobre como escolher uma clínica dentária",
+      "origin": "inferido",
+      "confidence": 0.6
+    },
+    "objectivo_pos_trafego": {
+      "value": "agendar consulta de avaliação",
+      "origin": "inferido",
+      "confidence": 0.65
+    },
+    "motivacao_clique": {
+      "value": "curiosidade sobre como escolher uma clínica de confiança",
+      "origin": "inferido",
+      "confidence": 0.6
+    },
+    "canais": {
+      "value": "Instagram e Google",
+      "origin": "inferido",
+      "confidence": 0.55
+    },
+    "business_model": {
+      "value": "leads",
+      "origin": "inferido",
+      "confidence": 0.9
+    }
+  },
+  "ads": {
+    "02.1": {
+      "template": "02.1_search_leads.md",
+      "platform": "Google Search Ads",
+      "label": "Search · Leads",
+      "headlines": [
+        {
+          "text": "Medo Do Dentista? Ajudamos",
+          "chars": 26,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Consulta De Avaliação Grátis",
+          "chars": 28,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Implantes Dentários Sem Dor",
+          "chars": 27,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Sorria Com Confiança De Novo",
+          "chars": 28,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Dentistas Em Lisboa Centro",
+          "chars": 26,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Marque A Sua Consulta Hoje",
+          "chars": 26,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Tratamento Indolor Garantido",
+          "chars": 28,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Sedação Consciente Disponível",
+          "chars": 29,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Pague Em Várias Prestações",
+          "chars": 26,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Avaliação 100% Gratuita",
+          "chars": 23,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Clínica Sorriso Há 15 Anos",
+          "chars": 26,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Equipamento De Última Geração",
+          "chars": 29,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Resultados Visíveis Em Semanas",
+          "chars": 30,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Fale Com Um Especialista Hoje",
+          "chars": 29,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Recupere O Seu Sorriso Ideal",
+          "chars": 28,
+          "valid": true,
+          "issues": []
+        }
+      ],
+      "descriptions": [
+        {
+          "text": "Avaliação gratuita com dentistas especialistas em implantes sem dor. Marque a consulta.",
+          "chars": 87,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Sedação consciente e equipamento moderno para um tratamento confortável, sem ansiedade.",
+          "chars": 87,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Mais de 15 anos a devolver sorrisos em Lisboa, com planos de pagamento em prestações.",
+          "chars": 85,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Avaliação clínica completa numa consulta gratuita, sem qualquer compromisso de tratamento.",
+          "chars": 90,
+          "valid": true,
+          "issues": []
+        }
+      ],
+      "sitelinks": [
+        {
+          "text": {
+            "text": "Implantologia Dentária",
+            "chars": 22,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Técnica sem dor e sedação leve.",
+              "chars": 31,
+              "valid": true,
+              "issues": []
+            },
+            {
+              "text": "Avaliação grátis, sem compromisso.",
+              "chars": 34,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        },
+        {
+          "text": {
+            "text": "Marcações Online",
+            "chars": 16,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Escolha o dia em poucos cliques.",
+              "chars": 32,
+              "valid": true,
+              "issues": []
+            },
+            {
+              "text": "Confirmação imediata por email.",
+              "chars": 31,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        },
+        {
+          "text": {
+            "text": "Planos de Pagamento",
+            "chars": 19,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Financiamento em várias prestações.",
+              "chars": 35,
+              "valid": true,
+              "issues": []
+            },
+            {
+              "text": "Orçamento claro, sem surpresas.",
+              "chars": 31,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        },
+        {
+          "text": {
+            "text": "Testemunhos de Pacientes",
+            "chars": 24,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Histórias reais de quem já tratou.",
+              "chars": 34,
+              "valid": true,
+              "issues": []
+            },
+            {
+              "text": "Avaliações verificadas da clínica.",
+              "chars": 34,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        },
+        {
+          "text": {
+            "text": "A Nossa Equipa",
+            "chars": 14,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Especialistas em implantologia.",
+              "chars": 31,
+              "valid": true,
+              "issues": []
+            },
+            {
+              "text": "Formação contínua certificada.",
+              "chars": 30,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        },
+        {
+          "text": {
+            "text": "Perguntas Frequentes",
+            "chars": 20,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Dor, preços e recuperação.",
+              "chars": 26,
+              "valid": true,
+              "issues": []
+            },
+            {
+              "text": "Respostas antes de marcar.",
+              "chars": 26,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        }
+      ]
+    },
+    "02.2": {
+      "template": "02.2_pmax_leads.md",
+      "platform": "Google Performance Max",
+      "label": "pMax · Leads",
+      "headlines": [
+        {
+          "text": "Avaliação Gratuita Hoje",
+          "chars": 23,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Implantes Sem Dor Em Lisboa",
+          "chars": 27,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Sedação Consciente Disponível",
+          "chars": 29,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Dentistas Especialistas Aqui",
+          "chars": 28,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Marque A Sua Consulta Já",
+          "chars": 24,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Sorria Com Confiança De Novo",
+          "chars": 28,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Financiamento Em Prestações",
+          "chars": 27,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "15 Anos A Tratar Sorrisos",
+          "chars": 25,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Tecnologia De Última Geração",
+          "chars": 28,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Resultados Em Poucas Semanas",
+          "chars": 28,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Equipa Dedicada A Cada Caso",
+          "chars": 27,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Consulta Sem Qualquer Compromisso",
+          "chars": 33,
+          "valid": false,
+          "issues": [
+            "excede 30 caracteres"
+          ]
+        },
+        {
+          "text": "Recupere O Seu Sorriso Ideal",
+          "chars": 28,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Tratamento Indolor Garantido",
+          "chars": 28,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Fale Com Um Especialista",
+          "chars": 24,
+          "valid": true,
+          "issues": []
+        }
+      ],
+      "long_headlines": [
+        {
+          "text": "Avaliação gratuita e sem compromisso com dentistas especialistas em implantes sem dor.",
+          "chars": 86,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Sedação consciente e tecnologia de ponta para um tratamento confortável do início ao fim.",
+          "chars": 89,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Mais de 15 anos a devolver sorrisos em Lisboa, com planos de pagamento em prestações.",
+          "chars": 85,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Equipa multidisciplinar dedicada a cada caso, do diagnóstico ao acompanhamento pós-tratamento e recuperação total garantida sempre.",
+          "chars": 131,
+          "valid": false,
+          "issues": [
+            "excede 90 caracteres"
+          ]
+        },
+        {
+          "text": "Marque hoje a sua consulta de avaliação e descubra o plano de tratamento ideal para si.",
+          "chars": 87,
+          "valid": true,
+          "issues": []
+        }
+      ],
+      "descriptions": [
+        {
+          "text": "Avaliação clínica completa numa consulta gratuita, sem qualquer compromisso de tratamento.",
+          "chars": 90,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Sedação consciente disponível para quem sente ansiedade em consultas dentárias habituais.",
+          "chars": 89,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Planos de pagamento flexíveis, adaptados ao orçamento de cada paciente da nossa clínica.",
+          "chars": 88,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Equipamento de última geração para diagnósticos precisos e tratamentos mais confortáveis.",
+          "chars": 89,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Equipa de especialistas em implantologia com mais de 15 anos de experiência em Lisboa.",
+          "chars": 86,
+          "valid": true,
+          "issues": []
+        }
+      ],
+      "sitelinks": [
+        {
+          "text": {
+            "text": "Implantologia Dentária",
+            "chars": 22,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Técnica sem dor e sedação leve..",
+              "chars": 32,
+              "valid": true,
+              "issues": []
+            },
+            {
+              "text": "Avaliação grátis, sem compromisso..",
+              "chars": 35,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        },
+        {
+          "text": {
+            "text": "Marcações Online",
+            "chars": 16,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Escolha o dia em poucos cliques..",
+              "chars": 33,
+              "valid": true,
+              "issues": []
+            },
+            {
+              "text": "Confirmação imediata por email..",
+              "chars": 32,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        },
+        {
+          "text": {
+            "text": "Planos de Pagamento",
+            "chars": 19,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Financiamento em várias prestações..",
+              "chars": 36,
+              "valid": false,
+              "issues": [
+                "excede 35 caracteres"
+              ]
+            },
+            {
+              "text": "Orçamento claro, sem surpresas..",
+              "chars": 32,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        },
+        {
+          "text": {
+            "text": "Testemunhos de Pacientes",
+            "chars": 24,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Histórias reais de quem já tratou..",
+              "chars": 35,
+              "valid": true,
+              "issues": []
+            },
+            {
+              "text": "Avaliações verificadas da clínica..",
+              "chars": 35,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        },
+        {
+          "text": {
+            "text": "A Nossa Equipa",
+            "chars": 14,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Especialistas em implantologia..",
+              "chars": 32,
+              "valid": true,
+              "issues": []
+            },
+            {
+              "text": "Formação contínua certificada..",
+              "chars": 31,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        },
+        {
+          "text": {
+            "text": "Perguntas Frequentes",
+            "chars": 20,
+            "valid": true,
+            "issues": []
+          },
+          "descriptions": [
+            {
+              "text": "Dor, preços e recuperação..",
+              "chars": 27,
+              "valid": true,
+              "issues": []
+            },
+            {
+              "text": "Respostas antes de marcar..",
+              "chars": 27,
+              "valid": true,
+              "issues": []
+            }
+          ]
+        }
+      ]
+    },
+    "02.5": {
+      "template": "02.5_meta_leads.md",
+      "platform": "Meta Ads",
+      "label": "Meta · Leads",
+      "primary_text": [
+        {
+          "text": "Tem medo do dentista? A Clínica Sorriso trata implantes com sedação consciente, sem dor e com acompanhamento próximo em cada etapa do processo. Marque já a avaliação gratuita.",
+          "chars": 175,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Mais de 15 anos a devolver sorrisos em Lisboa. Avaliação gratuita, planos de pagamento flexíveis e uma equipa que explica tudo antes de decidir. Peça o seu orçamento hoje.",
+          "chars": 171,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Adiou o tratamento dentário por receio? Conheça a nossa abordagem sem dor, com sedação consciente e tecnologia de última geração. Consulta de avaliação sem compromisso.",
+          "chars": 168,
+          "valid": true,
+          "issues": []
+        }
+      ],
+      "headlines": [
+        {
+          "text": "Implantes Sem Dor Em Lisboa",
+          "chars": 27,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Avaliação 100% Gratuita",
+          "chars": 23,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Sorria Com Confiança De Novo",
+          "chars": 28,
+          "valid": true,
+          "issues": []
+        }
+      ],
+      "descriptions": [
+        {
+          "text": "Sedação consciente disponível.",
+          "chars": 30,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "Planos de pagamento flexíveis.",
+          "chars": 30,
+          "valid": true,
+          "issues": []
+        },
+        {
+          "text": "15 anos de experiência.",
+          "chars": 23,
+          "valid": true,
+          "issues": []
+        }
+      ],
+      "cta": "Pedir Orçamento"
+    }
+  },
+  "llm_log": [
+    {
+      "task": "analise",
+      "page_id": "home",
+      "backend": "mock",
+      "model": "mock-model",
+      "duration_seconds": 0.01
+    },
+    {
+      "task": "analise",
+      "page_id": "servico-implantologia",
+      "backend": "mock",
+      "model": "mock-model",
+      "duration_seconds": 0.01
+    },
+    {
+      "task": "sintese",
+      "backend": "mock",
+      "model": "mock-model",
+      "duration_seconds": 0.02
+    },
+    {
+      "task": "keywords",
+      "backend": "mock",
+      "model": "mock-model",
+      "duration_seconds": 0.01
+    },
+    {
+      "task": "perfil",
+      "backend": "mock",
+      "model": "mock-model",
+      "duration_seconds": 0.01
+    },
+    {
+      "task": "anuncios",
+      "prompt": "02.1",
+      "backend": "mock",
+      "model": "mock-model",
+      "duration_seconds": 0.03
+    },
+    {
+      "task": "anuncios",
+      "prompt": "02.2",
+      "backend": "mock",
+      "model": "mock-model",
+      "duration_seconds": 0.03
+    },
+    {
+      "task": "anuncios",
+      "prompt": "02.5",
+      "backend": "mock",
+      "model": "mock-model",
+      "duration_seconds": 0.02
+    }
+  ]
+}

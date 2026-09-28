@@ -1,0 +1,145 @@
+app_name: "Auditor"
+owner_services:
+  - "Google Ads"
+  - "Meta Ads"
+  - "Microsoft Advertising"
+  - "Tracking e Analytics"
+  - "Copy e conversão"
+
+llm:
+  backend: ollama
+  ollama_url: "http://localhost:11434"
+  num_ctx: 8192
+  tasks:
+    analise:
+      backend: ollama
+      model: ""
+    keywords:
+      backend: ollama
+      model: ""
+    perfil:
+      backend: ollama
+      model: ""
+    anuncios:
+      backend: ollama
+      model: ""
+
+crawl:
+  max_pages: 25
+  delay_seconds: 1.5
+  respect_robots: true
+
+tracking:
+  pages: 4
+  block_collect_requests: true
+
+validation:
+  title_case_mode: all_words
+
+  "02.1":
+    headlines:
+      n: 15
+      max: 30
+      title_case: true
+      unique: true
+      forbidden_words: ["já", "stress", "sempre"]
+    descriptions:
+      n: 4
+      min: 85
+      max: 90
+    sitelinks:
+      n: 6
+      text_max: 25
+      desc_n: 2
+      desc_max: 35
+
+  "02.2":
+    headlines:
+      n: 15
+      max: 30
+      title_case: true
+      unique: true
+    long_headlines:
+      n: 5
+      min: 85
+      max: 90
+    descriptions:
+      n: 5
+      min: 85
+      max: 90
+    sitelinks:
+      n: 6
+      text_max: 25
+      desc_n: 2
+      desc_max: 35
+      desc_ends_with_period: true
+
+  "02.3":
+    headlines:
+      n: 15
+      max: 30
+      title_case: true
+      unique: true
+    descriptions:
+      n: 4
+      min: 85
+      max: 90
+    sitelinks:
+      n: 6
+      text_max: 25
+      desc_n: 2
+      desc_max: 35
+
+  "02.4":
+    headlines:
+      n: 15
+      max: 30
+      title_case: true
+      unique: true
+    long_headlines:
+      n: 5
+      min: 85
+      max: 90
+    descriptions:
+      n: 5
+      min: 85
+      max: 90
+    sitelinks:
+      n: 6
+      text_max: 25
+      desc_n: 2
+      desc_max: 35
+      desc_ends_with_period: true
+
+  "02.5":
+    primary_text:
+      n: 3
+      preview: 125
+    headlines:
+      n: 3
+      max: 40
+    descriptions:
+      n: 3
+      max: 30
+
+  "02.6":
+    primary_text:
+      n: 3
+      preview: 125
+    headlines:
+      n: 3
+      max: 40
+    descriptions:
+      n: 3
+      max: 30
+
+  "02.7":
+    primary_text:
+      n: 3
+      preview: 125
+    headlines:
+      n: 3
+      max: 40
+    descriptions:
+      n: 3
+      max: 30
