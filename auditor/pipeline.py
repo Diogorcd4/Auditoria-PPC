@@ -24,7 +24,7 @@ from auditor.keywords import build_keywords
 from auditor.llm.base import LLMClient
 from auditor.llm.openai_compat import OpenAICompatClient
 from auditor.opportunities import derive_opportunities
-from auditor.profile import extract_profile
+from auditor.profile import extract_profile, extract_verified_offers
 from auditor.prompts import select_templates_for_profile
 from auditor.tracking import detect_tracking, empty_report, merge_reports
 
@@ -379,7 +379,14 @@ async def _run_step(
         _require_model(llm, "perfil", model)
         _attach_wait_reporter(llm, step, progress_queue)
         profile = await extract_profile(llm, pages, model=model, max_chars=config.max_page_chars)
-        return profile.model_dump()
+        # As "ofertas verificadas" (secção E.1) são a única base factual que os Anúncios podem
+        # usar - extraídas aqui, ao lado do Perfil, e nunca inventadas mais tarde na geração.
+        try:
+            verified_offers = await extract_verified_offers(llm, pages, model=model, max_chars=config.max_page_chars)
+        except Exception as exc:  # noqa: BLE001 - sem ofertas verificadas, os Anúncios ficam mais conservadores, não falham
+            print(f"[perfil] não foi possível extrair ofertas verificadas: {exc}")
+            verified_offers = []
+        return {**profile.model_dump(), "verified_offers": [o.model_dump() for o in verified_offers]}
 
     if step == "anuncios":
         if not context.get("perfil"):
@@ -399,6 +406,7 @@ async def _run_step(
             model=model,
             max_correction_rounds=config.max_correction_rounds,
             prompts_output_dir=prompts_output_dir,
+            verified_offers=profile.get("verified_offers", []),
         )
         return {"selected_templates": templates, "ads": ads}
 

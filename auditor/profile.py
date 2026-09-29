@@ -150,3 +150,43 @@ def _apply_safety_rules(profile: SiteProfile, pages: list[PageData]) -> SiteProf
         profile.business_model = ProfileField(value="leads", origin="default", confidence=0.3)
 
     return profile
+
+
+class VerifiedOffer(BaseModel):
+    """Uma promessa, número ou CTA literal encontrado no site - nunca inventado (secção E.1
+    do pedido de correcção). `quote` tem de ser uma citação curta e literal da página em
+    `url`; os anúncios só podem afirmar o que constar aqui."""
+
+    claim: str
+    url: str
+    quote: str
+
+
+class VerifiedOffers(BaseModel):
+    offers: list[VerifiedOffer] = Field(default_factory=list)
+
+
+def _verified_offers_system_prompt() -> str:
+    return (
+        "És um auditor rigoroso de conteúdo publicitário. A partir do conteúdo real de um "
+        "site, extrai só as promessas, números concretos (preços, prazos, garantias, "
+        "quantidades) e CTAs que o site literalmente afirma - nunca inventes nada e nunca "
+        "generalizes. Para cada uma, indica: claim (a promessa em poucas palavras), url (o "
+        "URL exacto da página de onde veio) e quote (uma citação curta, literal, copiada do "
+        "texto dessa página - no máximo 20 palavras). Se o site não afirmar nada de concreto, "
+        "devolve uma lista vazia em vez de inventar. " + PT_PT_INSTRUCTION
+    )
+
+
+async def extract_verified_offers(llm: LLMClient, pages: list[PageData], *, model: str = "", max_chars: int = 4000) -> list[VerifiedOffer]:
+    """"Ofertas verificadas" (secção E.1): a única base factual que os anúncios podem usar.
+    Cada headline/description/sitelink só pode afirmar algo que esteja nesta lista - nunca um
+    superlativo ou promessa sem base (secção E.2)."""
+    prompt = (
+        f"{wrap_site_content(_pages_content_block(pages, max_chars=max_chars))}\n\n"
+        "Devolve APENAS um objecto JSON com o campo: offers (lista de objectos {claim, url, quote})."
+    )
+    result = await generate_json(llm, task="perfil", system=_verified_offers_system_prompt(), prompt=prompt, schema_model=VerifiedOffers, model=model)
+
+    known_urls = {page.url for page in pages}
+    return [offer for offer in result.offers if offer.url in known_urls]

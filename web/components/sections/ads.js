@@ -19,6 +19,9 @@ function assetRow(item, limits = {}) {
     el("div", { class: "ad-row__text" }, item.text),
     el("span", { class: `ad-row__count ${item.valid ? "is-ok" : "is-bad"}` }, label),
   ];
+  if (item.unverified) {
+    children.push(el("span", { class: "ad-row__unverified", title: item.issues?.find((i) => i.startsWith("não verificado")) ?? "não verificado no site" }, "não verificado no site"));
+  }
   if (item.lint?.length) {
     children.push(el("span", { class: "ad-row__lint", title: item.lint.join("; ") }, "PT-PT ⚠"));
   }
@@ -52,11 +55,17 @@ function assetGroup(title, items, limits, extraCopyText) {
 function sitelinksGroup(sitelinks) {
   const group = el("div", { class: "ads-group" }, [el("div", { class: "ads-group__title" }, "Sitelinks")]);
   for (const sl of sitelinks) {
+    const headerChildren = [
+      sl.text.text,
+      el("span", { class: `ad-row__count ${sl.text.valid ? "is-ok" : "is-bad"}`, style: "margin-left:8px" }, `${sl.text.chars}/25`),
+    ];
+    if (sl.url_valid === false) {
+      headerChildren.push(el("span", { class: "ad-row__unverified", title: `URL não encontrado no site rastreado: ${sl.url || "(vazio)"}` }, "URL inexistente no site"));
+    } else if (sl.url) {
+      headerChildren.push(el("span", { class: "sitelink-block__url" }, sl.url));
+    }
     const block = el("div", { class: "sitelink-block" }, [
-      el("div", { class: "sitelink-block__text" }, [
-        sl.text.text,
-        el("span", { class: `ad-row__count ${sl.text.valid ? "is-ok" : "is-bad"}`, style: "margin-left:8px" }, `${sl.text.chars}/25`),
-      ]),
+      el("div", { class: "sitelink-block__text" }, headerChildren),
       ...sl.descriptions.map((d) => assetRow(d, { max: 35 })),
     ]);
     group.appendChild(block);

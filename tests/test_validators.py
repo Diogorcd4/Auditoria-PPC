@@ -2,6 +2,7 @@ import pytest
 
 from auditor.validators import (
     check_forbidden_words,
+    check_unsupported_claims,
     count_valid,
     failed_items,
     is_title_case,
@@ -196,6 +197,83 @@ def test_lint_flags_brazilian_terms_without_failing_validation():
 
 def test_lint_is_empty_for_clean_pt_pt_copy():
     assert lint_pt_pt("Marque a sua consulta de avaliação gratuita") == []
+
+
+def test_lint_never_flags_seu_or_sua_even_without_an_article():
+    """Secção E.4 do pedido de correcção: "seu"/"sua" nunca são marcados pelo lint - só
+    "você"/"vocês" e brasileirismos claros de vocabulário."""
+    assert lint_pt_pt("Marque seu horário hoje mesmo") == []
+    assert lint_pt_pt("Sua consulta está confirmada") == []
+
+
+def test_lint_shows_the_exact_word_found_for_a_brazilianism():
+    result = lint_pt_pt("Aceda pelo seu celular a qualquer hora")
+    assert result == ['"celular": em PT-PT diz-se "telemóvel"']
+
+
+# ---------------------------------------------------------------------------
+# Ofertas não verificadas: superlativos/promessas sem base (secção E.2)
+# ---------------------------------------------------------------------------
+
+
+def test_check_unsupported_claims_flags_a_superlative_with_no_grounding():
+    assert check_unsupported_claims("Somos líderes de mercado", []) == ["líder"]
+
+
+def test_check_unsupported_claims_allows_a_superlative_literally_in_a_verified_quote():
+    quotes = ["A empresa líder em transportes desde 1990."]
+    assert check_unsupported_claims("Somos líderes de mercado", quotes) == []
+
+
+def test_check_unsupported_claims_is_case_insensitive():
+    assert check_unsupported_claims("GARANTIDO em 24 horas", []) == ["garantido"]
+
+
+def test_validate_asset_marks_an_unsupported_superlative_as_unverified_and_invalid():
+    result = validate_asset("O melhor serviço de sempre", max_len=90, verified_quotes=[])
+    assert result.unverified is True
+    assert result.valid is False
+    assert any("não verificado no site" in issue for issue in result.issues)
+
+
+def test_validate_asset_accepts_a_superlative_grounded_in_a_verified_quote():
+    result = validate_asset("O melhor serviço de sempre", max_len=90, verified_quotes=["O melhor serviço da região, garantido."])
+    assert result.unverified is False
+    assert result.valid is True
+
+
+def test_validate_asset_skips_the_unsupported_claims_check_when_verified_quotes_is_none():
+    """Compatibilidade: chamadas antigas que não passam verified_quotes continuam a validar
+    só pelas regras de sempre (comprimento, title case...), sem este novo bloqueio."""
+    result = validate_asset("O melhor serviço de sempre", max_len=90)
+    assert result.unverified is False
+    assert result.valid is True
+
+
+# ---------------------------------------------------------------------------
+# Sitelinks: o URL tem de existir no site rastreado (secção E.3)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_sitelinks_flags_a_url_that_does_not_exist_on_the_site():
+    sitelinks = [{"text": "Contacte-nos", "url": "https://example.pt/pagina-inexistente", "descriptions": ["Fale connosco agora mesmo."]}]
+    checks = validate_sitelinks(sitelinks, text_max=25, desc_max=35, known_urls={"https://example.pt/", "https://example.pt/contacto"})
+    assert checks[0].url_valid is False
+    assert checks[0].text.valid is False
+    assert any("não existe no site rastreado" in issue for issue in checks[0].text.issues)
+
+
+def test_validate_sitelinks_accepts_a_url_that_exists_on_the_site():
+    sitelinks = [{"text": "Contacte-nos", "url": "https://example.pt/contacto", "descriptions": ["Fale connosco agora mesmo."]}]
+    checks = validate_sitelinks(sitelinks, text_max=25, desc_max=35, known_urls={"https://example.pt/", "https://example.pt/contacto"})
+    assert checks[0].url_valid is True
+    assert checks[0].text.valid is True
+
+
+def test_validate_sitelinks_never_flags_a_url_when_known_urls_is_not_given():
+    sitelinks = [{"text": "Contacte-nos", "url": "https://example.pt/qualquer-coisa", "descriptions": ["Fale connosco agora mesmo."]}]
+    checks = validate_sitelinks(sitelinks, text_max=25, desc_max=35)
+    assert checks[0].url_valid is True
 
 
 # ---------------------------------------------------------------------------

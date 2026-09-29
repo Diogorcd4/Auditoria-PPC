@@ -1,0 +1,19 @@
+{
+  "offers": [
+    {
+      "claim": "Consulta de avaliação gratuita",
+      "url": "https://example.pt/home",
+      "quote": "Marque a sua consulta de avaliação gratuita."
+    },
+    {
+      "claim": "Preço a partir de 150€",
+      "url": "https://example.pt/home",
+      "quote": "Implantes a partir de 150€."
+    },
+    {
+      "claim": "Página inexistente, deve ser descartada",
+      "url": "https://example.pt/nao-existe",
+      "quote": "Isto não devia sobreviver ao filtro de URLs conhecidos."
+    }
+  ]
+}

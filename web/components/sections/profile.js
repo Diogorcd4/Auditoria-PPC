@@ -53,6 +53,27 @@ export function renderProfile(audit, ctx = {}) {
   }
 
   const card = el("div", { class: "card" }, [table]);
+
+  const verifiedOffers = audit.profile.verified_offers;
+  if (verifiedOffers?.length) {
+    const offersCard = el("div", { class: "card", style: "margin-top:20px" }, [
+      el("h3", { style: "font-size:0.9rem;margin-bottom:4px" }, "Ofertas verificadas"),
+      el("p", { style: "font-size:0.82rem;color:var(--muted);margin-bottom:12px" }, "A única base factual que os anúncios podem usar - qualquer superlativo ou promessa fora desta lista é marcado como \"não verificado no site\"."),
+    ]);
+    for (const offer of verifiedOffers) {
+      offersCard.appendChild(
+        el("div", { style: "padding:8px 0;border-top:1px solid var(--border)" }, [
+          el("div", { style: "font-weight:600;font-size:0.85rem" }, offer.claim),
+          el("div", { style: "font-size:0.8rem;color:var(--muted);margin-top:2px" }, `"${offer.quote}"`),
+          el("a", { href: offer.url, target: "_blank", rel: "noopener", style: "font-size:0.78rem" }, offer.url),
+        ])
+      );
+    }
+    section.appendChild(offersCard);
+  } else if (verifiedOffers) {
+    section.appendChild(el("div", { class: "card", style: "margin-top:20px;font-size:0.85rem;color:var(--muted)" }, "Não foi possível extrair nenhuma oferta verificada do site - os anúncios ficam mais conservadores, sem números, prazos ou garantias."));
+  }
+
   if ("conteudo_forte" in audit.profile) {
     card.appendChild(
       el("div", { style: "margin-top:12px;font-size:0.82rem;color:var(--muted)" }, [

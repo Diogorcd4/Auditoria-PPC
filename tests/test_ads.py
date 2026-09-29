@@ -135,7 +135,7 @@ async def test_generate_template_ads_02_1_happy_path_no_corrections_needed():
         "anuncios_02.1_sitelinks": [
             json.dumps({
                 "sitelinks": [
-                    {"text": _len_text(20, f"Link{i} "), "descriptions": [_len_text(30, "Desc "), _len_text(28, "Outra ")]}
+                    {"text": _len_text(20, f"Link{i} "), "url": "https://example.pt/consulta", "descriptions": [_len_text(30, "Desc "), _len_text(28, "Outra ")]}
                     for i in range(6)
                 ]
             })
@@ -265,3 +265,86 @@ async def test_generate_all_ads_runs_every_selected_template():
     assert "sitelinks" not in ads["02.5"]
     assert len(ads["02.5"]["primary_text"]) == 3
     assert len(ads["02.5"]["headlines"]) == 3
+
+
+# ---------------------------------------------------------------------------
+# Ofertas verificadas: anúncios só podem afirmar o que o site sustenta (secção E)
+# ---------------------------------------------------------------------------
+
+
+VERIFIED_OFFERS = [
+    {"claim": "Avaliação gratuita", "url": "https://example.pt/", "quote": "Marque já a sua avaliação gratuita."},
+]
+
+
+def test_build_full_prompt_includes_verified_offers_and_known_urls():
+    prompt, _ = build_full_prompt("02.1_search_leads.md", flatten_profile(_profile()), _pages(), verified_offers=VERIFIED_OFFERS)
+    assert "OFERTAS VERIFICADAS" in prompt
+    assert "Avaliação gratuita" in prompt
+    assert "https://example.pt/" in prompt
+    assert "líder" in prompt.lower()  # a regra que proíbe superlativos sem base está no prompt
+
+
+def test_build_full_prompt_says_no_verified_offers_were_found_when_the_list_is_empty():
+    prompt, _ = build_full_prompt("02.1_search_leads.md", flatten_profile(_profile()), _pages(), verified_offers=[])
+    assert "nenhuma oferta verificada" in prompt.lower()
+
+
+@pytest.mark.asyncio
+async def test_generate_template_ads_marks_an_unsupported_superlative_headline_as_invalid():
+    headlines_with_superlative = VALID_HEADLINES[0:4] + ["Somos A Clínica Líder Aqui"]
+    responses = {
+        "anuncios_02.1_headlines": [json.dumps({"items": headlines_with_superlative})],
+        "anuncios_02.1_headlines_fix": [json.dumps({"text": "Somos A Clínica Líder Aqui"})] * 3,  # nunca se corrige
+        "anuncios_02.1_descriptions": [json.dumps({"items": [_len_text(87) for _ in range(4)]})],
+        "anuncios_02.1_sitelinks": [
+            json.dumps({"sitelinks": [{"text": _len_text(20, f"Link{i} "), "url": "https://example.pt/consulta", "descriptions": [_len_text(30), _len_text(28)]} for i in range(6)]})
+        ],
+    }
+    llm = _ScriptedLLMClient(responses)
+    block = await generate_template_ads(llm, "02.1_search_leads.md", _profile(), _pages(), max_correction_rounds=1, verified_offers=[])
+
+    unsupported = next(h for h in block["headlines"] if "Líder" in h["text"])
+    assert unsupported["unverified"] is True
+    assert unsupported["valid"] is False
+    assert any("não verificado no site" in issue for issue in unsupported["issues"])
+
+
+@pytest.mark.asyncio
+async def test_generate_template_ads_allows_a_superlative_grounded_in_a_verified_offer():
+    headlines_with_superlative = VALID_HEADLINES[0:4] + ["Somos A Clínica Líder Aqui"]
+    responses = {
+        "anuncios_02.1_headlines": [json.dumps({"items": headlines_with_superlative})],
+        "anuncios_02.1_descriptions": [json.dumps({"items": [_len_text(87) for _ in range(4)]})],
+        "anuncios_02.1_sitelinks": [
+            json.dumps({"sitelinks": [{"text": _len_text(20, f"Link{i} "), "url": "https://example.pt/consulta", "descriptions": [_len_text(30), _len_text(28)]} for i in range(6)]})
+        ],
+    }
+    grounded_offer = [{"claim": "Líder de mercado", "url": "https://example.pt/", "quote": "Somos a clínica líder na região há 20 anos."}]
+    llm = _ScriptedLLMClient(responses)
+    block = await generate_template_ads(llm, "02.1_search_leads.md", _profile(), _pages(), verified_offers=grounded_offer)
+
+    grounded = next(h for h in block["headlines"] if "Líder" in h["text"])
+    assert grounded["unverified"] is False
+
+
+@pytest.mark.asyncio
+async def test_generate_template_ads_flags_a_sitelink_pointing_to_a_url_outside_the_crawled_site():
+    responses = {
+        "anuncios_02.1_headlines": [json.dumps({"items": VALID_HEADLINES[0:15]})],
+        "anuncios_02.1_descriptions": [json.dumps({"items": [_len_text(87) for _ in range(4)]})],
+        "anuncios_02.1_sitelinks": [
+            json.dumps({
+                "sitelinks": [
+                    {"text": _len_text(20, f"Link{i} "), "url": "https://example.pt/nao-existe", "descriptions": [_len_text(30), _len_text(28)]}
+                    for i in range(6)
+                ]
+            })
+        ],
+        "anuncios_02.1_sitelinks_fix": [json.dumps({"text": "Link", "url": "https://example.pt/nao-existe", "descriptions": ["a", "b"]})] * 10,
+    }
+    llm = _ScriptedLLMClient(responses)
+    block = await generate_template_ads(llm, "02.1_search_leads.md", _profile(), _pages(), max_correction_rounds=1)
+
+    assert all(not sl["url_valid"] for sl in block["sitelinks"])
+    assert all(not sl["text"]["valid"] for sl in block["sitelinks"])

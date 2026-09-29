@@ -43,6 +43,7 @@ class TextFix(BaseModel):
 
 class SitelinkItem(BaseModel):
     text: str
+    url: str = ""
     descriptions: list[str]
 
 
@@ -81,7 +82,28 @@ def _select_relevant_pages(pages: list[PageData], landing_url: str, *, max_chars
     return trimmed  # list[tuple[PageData, str]]
 
 
-def build_full_prompt(template_name: str, profile_flat: dict[str, str], pages: list[PageData]) -> tuple[str, list[str]]:
+def _grounding_block(verified_offers: list[dict[str, Any]], pages: list[PageData]) -> str:
+    """Regras e factos que os anúncios só podem afirmar (secção E.1/E.2 do pedido de
+    correcção): sem isto, um modelo tende a preencher lacunas com superlativos genéricos
+    ("líder", "melhor", "garantido") que o site nunca disse."""
+    if verified_offers:
+        offers_lines = "\n".join(f'- {o["claim"]} (fonte: {o["url"]} - "{o["quote"]}")' for o in verified_offers)
+    else:
+        offers_lines = "(nenhuma oferta verificada foi extraída do site - não afirmes nenhum número, prazo ou garantia)"
+    known_urls = "\n".join(f"- {p.url}" for p in pages)
+    return (
+        "OFERTAS VERIFICADAS (a única base factual que podes usar):\n"
+        f"{offers_lines}\n\n"
+        "REGRAS OBRIGATÓRIAS: só podes afirmar uma promessa, número, prazo ou garantia se "
+        "constar literalmente na lista de ofertas verificadas acima. Nunca uses superlativos "
+        "ou promessas sem base como \"líder\", \"melhor\", \"número 1\", \"garantido\" ou \"em "
+        "tempo real\", a não ser que apareçam literalmente numa citação acima. Se gerares um "
+        "sitelink, o seu URL tem de ser exactamente um destes URLs do site rastreado:\n"
+        f"{known_urls}"
+    )
+
+
+def build_full_prompt(template_name: str, profile_flat: dict[str, str], pages: list[PageData], *, verified_offers: Optional[list[dict[str, Any]]] = None) -> tuple[str, list[str]]:
     filled, missing = fill_template(template_name, profile_flat)
     relevant = _select_relevant_pages(pages, profile_flat.get("landing_page_url", ""))
     date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
@@ -90,6 +112,7 @@ def build_full_prompt(template_name: str, profile_flat: dict[str, str], pages: l
         f"{filled}\n\n"
         f"CONTEÚDO REAL DO SITE (recolhido automaticamente em {date_str})\n"
         f"{wrap_site_content(content_block)}\n\n"
+        f"{_grounding_block(verified_offers or [], pages)}\n\n"
         f"{TECH_NOTE}"
     )
     return full_prompt, missing
@@ -157,14 +180,14 @@ async def _run_correction_rounds(
 
 
 async def _fix_one_sitelink(llm: LLMClient, *, task: str, context: str, original: dict, issues: list[str], model: str) -> dict:
-    system = "Corrige este sitelink (texto + descrições) para deixar de violar as regras indicadas, mudando o mínimo possível. Conta os caracteres com rigor. " + PT_PT_INSTRUCTION
+    system = "Corrige este sitelink (texto + URL + descrições) para deixar de violar as regras indicadas, mudando o mínimo possível. O URL tem de ser um dos URLs do site rastreado indicados no contexto. Conta os caracteres com rigor. " + PT_PT_INSTRUCTION
     prompt = (
         f"{context}\n\nSitelink original: {original}\n"
         f"Problemas a corrigir: {'; '.join(issues)}\n"
-        "Devolve APENAS um objecto JSON {\"text\": \"...\", \"descriptions\": [...]} com o sitelink corrigido."
+        "Devolve APENAS um objecto JSON {\"text\": \"...\", \"url\": \"...\", \"descriptions\": [...]} com o sitelink corrigido."
     )
     result = await generate_json(llm, task=task, system=system, prompt=prompt, schema_model=SitelinkItem, model=model)
-    return {"text": result.text, "descriptions": result.descriptions}
+    return {"text": result.text, "url": result.url or original.get("url", ""), "descriptions": result.descriptions}
 
 
 async def _generate_sitelinks(
@@ -179,13 +202,25 @@ async def _generate_sitelinks(
     desc_ends_with_period: bool,
     max_rounds: int,
     model: str,
+    verified_quotes: Optional[list[str]] = None,
+    known_urls: Optional[set[str]] = None,
 ) -> list[SitelinkCheck]:
-    system = f"Gera exactamente {n} sitelinks para esta campanha, cada um com um texto curto e exactamente {desc_n} descriptions. " + PT_PT_INSTRUCTION
-    prompt = f"{context}\n\nDevolve APENAS um objecto JSON {{\"sitelinks\": [{{\"text\": \"...\", \"descriptions\": [...]}}]}} com exactamente {n} sitelinks, cada um com exactamente {desc_n} descriptions."
+    system = f"Gera exactamente {n} sitelinks para esta campanha, cada um com um texto curto, um URL (exactamente um dos URLs do site rastreado indicados no contexto) e exactamente {desc_n} descriptions. " + PT_PT_INSTRUCTION
+    prompt = f"{context}\n\nDevolve APENAS um objecto JSON {{\"sitelinks\": [{{\"text\": \"...\", \"url\": \"...\", \"descriptions\": [...]}}]}} com exactamente {n} sitelinks, cada um com exactamente {desc_n} descriptions."
     result = await generate_json(llm, task=task, system=system, prompt=prompt, schema_model=SitelinkBatch, model=model)
-    sitelinks = [{"text": sl.text, "descriptions": sl.descriptions[:desc_n]} for sl in result.sitelinks[:n]]
+    sitelinks = [{"text": sl.text, "url": sl.url, "descriptions": sl.descriptions[:desc_n]} for sl in result.sitelinks[:n]]
 
-    checks = validate_sitelinks(sitelinks, text_max=text_max, desc_max=desc_max, desc_ends_with_period=desc_ends_with_period)
+    def _validate() -> list[SitelinkCheck]:
+        return validate_sitelinks(
+            sitelinks,
+            text_max=text_max,
+            desc_max=desc_max,
+            desc_ends_with_period=desc_ends_with_period,
+            verified_quotes=verified_quotes,
+            known_urls=known_urls,
+        )
+
+    checks = _validate()
     for _ in range(max_rounds):
         bad = [i for i, c in enumerate(checks) if not c.text.valid or any(not d.valid for d in c.descriptions)]
         if not bad:
@@ -198,7 +233,7 @@ async def _generate_sitelinks(
                 sitelinks[i] = await _fix_one_sitelink(llm, task=task, context=context, original=sitelinks[i], issues=issues, model=model)
             except LLMJsonError:
                 pass
-        checks = validate_sitelinks(sitelinks, text_max=text_max, desc_max=desc_max, desc_ends_with_period=desc_ends_with_period)
+        checks = _validate()
     return checks
 
 
@@ -212,11 +247,15 @@ async def generate_template_ads(
     validation_config: Optional[dict] = None,
     max_correction_rounds: int = MAX_CORRECTION_ROUNDS,
     prompts_output_dir: Optional[Path] = None,
+    verified_offers: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     """Fill one template, run its batched generation + up to `max_correction_rounds`
     correction rounds per group, and return it in the shape the frontend/report expect."""
+    verified_offers = verified_offers or []
+    verified_quotes = [o["quote"] for o in verified_offers]
+    known_urls = {p.url for p in pages}
     profile_flat = flatten_profile(profile)
-    full_prompt, missing_placeholders = build_full_prompt(template_name, profile_flat, pages)
+    full_prompt, missing_placeholders = build_full_prompt(template_name, profile_flat, pages, verified_offers=verified_offers)
 
     if prompts_output_dir is not None:
         prompts_output_dir.mkdir(parents=True, exist_ok=True)
@@ -235,7 +274,7 @@ async def generate_template_ads(
     if "primary_text" in rules:
         r = rules["primary_text"]
         texts = await _generate_batched_texts(llm, task=f"anuncios_{key}_primary_text", context=full_prompt, n=r["n"], batch_size=r["n"], kind="Primary Text", model=model)
-        block["primary_text"] = [c.model_dump() for c in validate_primary_text(texts, preview=r.get("preview", 125))]
+        block["primary_text"] = [c.model_dump() for c in validate_primary_text(texts, preview=r.get("preview", 125), verified_quotes=verified_quotes)]
 
     if "headlines" in rules:
         r = rules["headlines"]
@@ -252,6 +291,7 @@ async def generate_template_ads(
                 "title_case_mode": title_case_mode,
                 "forbidden_words": r.get("forbidden_words"),
                 "unique": r.get("unique", False),
+                "verified_quotes": verified_quotes,
             },
             max_rounds=max_correction_rounds,
             model=model,
@@ -266,7 +306,7 @@ async def generate_template_ads(
             task=f"anuncios_{key}_long_headlines_fix",
             context=full_prompt,
             texts=texts,
-            validate_kwargs={"min_len": r.get("min"), "max_len": r.get("max")},
+            validate_kwargs={"min_len": r.get("min"), "max_len": r.get("max"), "verified_quotes": verified_quotes},
             max_rounds=max_correction_rounds,
             model=model,
         )
@@ -280,7 +320,7 @@ async def generate_template_ads(
             task=f"anuncios_{key}_descriptions_fix",
             context=full_prompt,
             texts=texts,
-            validate_kwargs={"min_len": r.get("min"), "max_len": r.get("max")},
+            validate_kwargs={"min_len": r.get("min"), "max_len": r.get("max"), "verified_quotes": verified_quotes},
             max_rounds=max_correction_rounds,
             model=model,
         )
@@ -299,6 +339,8 @@ async def generate_template_ads(
             desc_ends_with_period=r.get("desc_ends_with_period", False),
             max_rounds=max_correction_rounds,
             model=model,
+            verified_quotes=verified_quotes,
+            known_urls=known_urls,
         )
         block["sitelinks"] = [c.model_dump() for c in sitelink_checks]
 
@@ -314,6 +356,7 @@ async def generate_all_ads(
     model: str = "",
     max_correction_rounds: int = MAX_CORRECTION_ROUNDS,
     prompts_output_dir: Optional[Path] = None,
+    verified_offers: Optional[list[dict[str, Any]]] = None,
 ) -> dict[str, Any]:
     config = load_validation_config()
     ads: dict[str, Any] = {}
@@ -328,5 +371,6 @@ async def generate_all_ads(
             validation_config=config,
             max_correction_rounds=max_correction_rounds,
             prompts_output_dir=prompts_output_dir,
+            verified_offers=verified_offers,
         )
     return ads

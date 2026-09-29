@@ -267,7 +267,7 @@ async def regenerate_ads(payload: dict = Body(...)) -> JSONResponse:
     except RuntimeError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
 
-    ads = await generate_all_ads(llm, templates, profile, pages, model=model)
+    ads = await generate_all_ads(llm, templates, profile, pages, model=model, verified_offers=profile.get("verified_offers", []))
     valid, total = count_ads_assets(ads)
     return JSONResponse({"ads": ads, "ads_valid_count": valid, "ads_total_count": total})
 

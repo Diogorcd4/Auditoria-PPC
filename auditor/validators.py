@@ -28,11 +28,12 @@ BRAZILIAN_LINT_TERMS: dict[str, str] = {
 }
 _BRAZILIAN_LINT_TERMS = {k: v for k, v in BRAZILIAN_LINT_TERMS.items() if v}
 
-# "seu"/"sua" without a preceding article ("o"/"a") is the common PT-BR pattern (PT-BR drops
-# the article before possessives: "seu carro" vs PT-PT "o seu carro"). Flagging the bare word
-# everywhere would swamp normal PT-PT copy in false positives, so this only fires when there
-# is no "o "/"a " right before it.
-BARE_POSSESSIVE_RE = re.compile(r"(?<![oOaA] )\b(seu|sua)\b", re.IGNORECASE)
+# Superlativos e promessas sem base que um anúncio só pode usar se constarem literalmente
+# nalguma citação das ofertas verificadas do site (secção E.2 do pedido de correcção).
+UNSUPPORTED_SUPERLATIVES = [
+    "líder", "lider", "melhor", "número 1", "numero 1", "nº 1", "n.º 1", "n.º1",
+    "garantido", "garantida", "garantidos", "garantidas", "em tempo real",
+]
 
 
 class AssetCheck(BaseModel):
@@ -40,6 +41,7 @@ class AssetCheck(BaseModel):
     chars: int
     valid: bool
     warnings: bool = False
+    unverified: bool = False
     issues: list[str] = Field(default_factory=list)
     lint: list[str] = Field(default_factory=list)
 
@@ -47,6 +49,8 @@ class AssetCheck(BaseModel):
 class SitelinkCheck(BaseModel):
     text: AssetCheck
     descriptions: list[AssetCheck]
+    url: str = ""
+    url_valid: bool = True
 
 
 def load_validation_config(path: Path | str = CONFIG_PATH) -> dict:
@@ -56,18 +60,24 @@ def load_validation_config(path: Path | str = CONFIG_PATH) -> dict:
 
 
 def lint_pt_pt(text: str) -> list[str]:
-    """Non-blocking PT-BR/pronoun lint. Never affects `valid`."""
+    """Non-blocking PT-BR/pronoun lint. Never affects `valid`. "seu"/"sua" nunca são marcados
+    (secção E.4): são de uso corrente e correcto em PT-PT (ex.: "o seu carro"), e marcá-los
+    dava demasiados falsos positivos - só "você"/"vocês" e brasileirismos claros de vocabulário
+    contam. Cada aviso mostra a palavra exacta encontrada."""
     lower = text.lower()
     issues = []
     for term, message in _BRAZILIAN_LINT_TERMS.items():
         if re.search(rf"\b{re.escape(term)}\b", lower):
             issues.append(f'"{term}": {message}')
-    match = BARE_POSSESSIVE_RE.search(text)
-    if match:
-        word = match.group(1)
-        article = "o" if word.lower() == "seu" else "a"
-        issues.append(f'"{word}" sem artigo soa a PT-BR; em PT-PT prefira "{article} {word.lower()}"')
     return issues
+
+
+def check_unsupported_claims(text: str, verified_quotes: list[str]) -> list[str]:
+    """Superlativos/promessas sem base (secção E.2): só passam se a mesma palavra constar
+    literalmente numa citação das ofertas verificadas do site. Devolve as que faltam."""
+    lower = text.lower()
+    combined_quotes = " ".join(q.lower() for q in verified_quotes)
+    return [term for term in UNSUPPORTED_SUPERLATIVES if term in lower and term not in combined_quotes]
 
 
 def is_title_case(text: str, mode: str = "all_words") -> bool:
@@ -100,6 +110,7 @@ def validate_asset(
     title_case_mode: str = "all_words",
     forbidden_words: Optional[list[str]] = None,
     ends_with_period: bool = False,
+    verified_quotes: Optional[list[str]] = None,
 ) -> AssetCheck:
     chars = len(text)
     issues: list[str] = []
@@ -115,7 +126,14 @@ def validate_asset(
     if ends_with_period and not text.endswith("."):
         issues.append("não termina em ponto final")
 
-    return AssetCheck(text=text, chars=chars, valid=not issues, issues=issues, lint=lint_pt_pt(text))
+    unverified = False
+    if verified_quotes is not None:
+        unsupported = check_unsupported_claims(text, verified_quotes)
+        if unsupported:
+            unverified = True
+            issues.append(f"não verificado no site: {', '.join(unsupported)}")
+
+    return AssetCheck(text=text, chars=chars, valid=not issues, unverified=unverified, issues=issues, lint=lint_pt_pt(text))
 
 
 def validate_group(
@@ -128,6 +146,7 @@ def validate_group(
     forbidden_words: Optional[list[str]] = None,
     ends_with_period: bool = False,
     unique: bool = False,
+    verified_quotes: Optional[list[str]] = None,
 ) -> list[AssetCheck]:
     results = [
         validate_asset(
@@ -138,6 +157,7 @@ def validate_group(
             title_case_mode=title_case_mode,
             forbidden_words=forbidden_words,
             ends_with_period=ends_with_period,
+            verified_quotes=verified_quotes,
         )
         for t in texts
     ]
@@ -165,22 +185,34 @@ def validate_sitelinks(
     text_max: int,
     desc_max: int,
     desc_ends_with_period: bool = False,
+    verified_quotes: Optional[list[str]] = None,
+    known_urls: Optional[set[str]] = None,
 ) -> list[SitelinkCheck]:
-    return [
-        SitelinkCheck(
-            text=validate_asset(sl["text"], max_len=text_max),
-            descriptions=[validate_asset(d, max_len=desc_max, ends_with_period=desc_ends_with_period) for d in sl["descriptions"]],
-        )
-        for sl in sitelinks
-    ]
+    checks = []
+    for sl in sitelinks:
+        url = sl.get("url", "")
+        # Sem known_urls não há como verificar (ex.: chamadas antigas/testes que não passam
+        # a lista de páginas) - nesse caso nunca se assinala um URL como inválido (secção E.3).
+        url_valid = True if known_urls is None else (bool(url) and url in known_urls)
+        text_check = validate_asset(sl["text"], max_len=text_max, verified_quotes=verified_quotes)
+        if not url_valid:
+            text_check.valid = False
+            text_check.issues.append(f"o sitelink aponta para um URL que não existe no site rastreado: '{url or '(vazio)'}'")
+        checks.append(SitelinkCheck(
+            text=text_check,
+            descriptions=[validate_asset(d, max_len=desc_max, ends_with_period=desc_ends_with_period, verified_quotes=verified_quotes) for d in sl["descriptions"]],
+            url=url,
+            url_valid=url_valid,
+        ))
+    return checks
 
 
-def validate_primary_text(texts: list[str], *, preview: int = 125) -> list[AssetCheck]:
+def validate_primary_text(texts: list[str], *, preview: int = 125, verified_quotes: Optional[list[str]] = None) -> list[AssetCheck]:
     """Meta primary text has no hard character cap, but anything past `preview` characters
     gets truncated in the feed, so flag it as a (non-blocking) warning rather than invalid."""
     results = []
     for text in texts:
-        result = validate_asset(text)
+        result = validate_asset(text, verified_quotes=verified_quotes)
         if len(text) > preview:
             result.warnings = True
             result.issues.append(f"tem mais de {preview} caracteres: garanta que o gancho está antes desse ponto, porque o resto é cortado na pré-visualização")

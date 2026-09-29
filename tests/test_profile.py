@@ -9,10 +9,12 @@ from auditor.profile import (
     SiteProfile,
     _apply_safety_rules,
     extract_profile,
+    extract_verified_offers,
     pick_best_landing_page,
 )
 
 FIXTURES = {"perfil": "site_profile.json"}
+OFFERS_FIXTURES = {"perfil": "verified_offers.json"}
 
 
 def _page(page_id="home", page_type="home", prices=None, url=None) -> PageData:
@@ -91,3 +93,39 @@ def test_safety_rule_falls_back_to_leads_for_an_invalid_business_model_value():
     fixed = _apply_safety_rules(profile, [_page("home")])
     assert fixed.business_model.value == "leads"
     assert fixed.business_model.origin == "default"
+
+
+# ---------------------------------------------------------------------------
+# Ofertas verificadas (secção E.1 do pedido de correcção)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_extract_verified_offers_returns_claims_grounded_in_real_pages():
+    llm = MockLLMClient(fixtures=OFFERS_FIXTURES)
+    pages = [_page("home", url="https://example.pt/home")]
+    offers = await extract_verified_offers(llm, pages)
+
+    claims = {o.claim for o in offers}
+    assert "Consulta de avaliação gratuita" in claims
+    assert all(o.url == "https://example.pt/home" for o in offers)
+
+
+@pytest.mark.asyncio
+async def test_extract_verified_offers_drops_any_offer_whose_url_is_not_a_known_page():
+    """Nunca confia numa oferta cujo URL o modelo inventou (secção E.1): tem de ser uma das
+    páginas realmente rastreadas."""
+    llm = MockLLMClient(fixtures=OFFERS_FIXTURES)
+    pages = [_page("home", url="https://example.pt/home")]
+    offers = await extract_verified_offers(llm, pages)
+
+    assert not any(o.url == "https://example.pt/nao-existe" for o in offers)
+    assert not any("inexistente" in o.claim.lower() for o in offers)
+
+
+@pytest.mark.asyncio
+async def test_extract_verified_offers_is_empty_when_the_llm_finds_nothing():
+    llm = MockLLMClient(fixtures={"perfil": "default_response.json"})
+    pages = [_page("home", url="https://example.pt/home")]
+    offers = await extract_verified_offers(llm, pages)
+    assert offers == []
