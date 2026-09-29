@@ -22,6 +22,7 @@ from auditor.browser import launch_browser
 from auditor.crawler import PageData, crawl_site
 from auditor.keywords import build_keywords
 from auditor.llm.base import LLMClient
+from auditor.llm.openai_compat import OpenAICompatClient
 from auditor.opportunities import derive_opportunities
 from auditor.profile import extract_profile
 from auditor.prompts import select_templates_for_profile
@@ -64,6 +65,18 @@ class DependencyNotMetError(RuntimeError):
     """A step's prerequisite step didn't produce usable output (secção B.5)."""
 
 
+def _require_model(llm_client: LLMClient, task: str, model: str) -> None:
+    """O backend openai_compatible (ex.: Gemini gratuito) exige sempre um nome de modelo
+    explícito - ao contrário do Ollama, que pode ter um modelo por defeito no próprio
+    servidor local. Falhar aqui, antes de qualquer chamada à API, poupa uma tentativa que a
+    API ia sempre recusar com 400 "model is not specified" (secção 2 do pedido de correcção)."""
+    if isinstance(llm_client, OpenAICompatClient) and not model:
+        raise RuntimeError(
+            f"Falta o modelo para a tarefa '{task}' no config.yaml/config.local.yaml (o backend "
+            "openai_compatible exige um modelo explícito, ex.: gemini-flash-lite-latest)."
+        )
+
+
 class PipelineEvent(BaseModel):
     step: str
     status: str  # running | progress | done | error
@@ -87,6 +100,7 @@ class PipelineConfig:
     max_page_chars: int = 4000
     owner_services: list[str] = field(default_factory=lambda: list(DEFAULT_OWNER_SERVICES))
     model_for_task: dict[str, str] = field(default_factory=dict)
+    fast: bool = False
     output_dir: Path = Path("output")
     cache_dir: Path = Path(".cache")
     only: Optional[list[str]] = None
@@ -247,6 +261,7 @@ async def _run_step(
             respect_robots=config.respect_robots,
             cache_dir=config.cache_dir,
             browser=browser,
+            fast=config.fast,
         )
         return result.model_dump()
 
@@ -268,11 +283,17 @@ async def _run_step(
     if step == "comunicacao":
         model = config.model_for_task.get("analise", "")
         llm = llm_factory("analise")
+        _require_model(llm, "analise", model)
         _attach_wait_reporter(llm, step, progress_queue)
-        total = len(pages)
+        # Páginas legais (privacidade, cookies, termos e condições) nunca têm nada a dizer
+        # sobre problemas/desejos/CTA de um negócio - analisá-las só dilui a Comunicação com
+        # ruído (secção 9). Se por algum motivo só existirem páginas legais, analisa-as de
+        # qualquer forma em vez de falhar o passo inteiro sem nenhuma página.
+        analysis_pages = [p for p in pages if p.type != "legal"] or pages
+        total = len(analysis_pages)
         communications: list[PageCommunication] = []
         failed_pages: list[dict] = []
-        for index, page in enumerate(pages, start=1):
+        for index, page in enumerate(analysis_pages, start=1):
             if progress_queue is not None:
                 progress_queue.put_nowait((step, f"página {index} de {total}: {page.title or page.url}"))
             try:
@@ -301,6 +322,7 @@ async def _run_step(
             raise DependencyNotMetError("Depende da Comunicação, que não foi concluída.")
         model = config.model_for_task.get("analise", "")
         llm = llm_factory("analise")
+        _require_model(llm, "analise", model)
         _attach_wait_reporter(llm, step, progress_queue)
         communications = [PageCommunication.model_validate(c) for c in comunicacao_result["pages"]]
         analyzed_ids = {c.page_id for c in communications}
@@ -312,6 +334,7 @@ async def _run_step(
     if step == "termos":
         model = config.model_for_task.get("keywords", "")
         llm = llm_factory("keywords")
+        _require_model(llm, "keywords", model)
         _attach_wait_reporter(llm, step, progress_queue)
         return await build_keywords(
             llm,
@@ -329,6 +352,7 @@ async def _run_step(
             raise DependencyNotMetError("Depende do rastreio do site, que não foi concluído.")
         model = config.model_for_task.get("perfil", "")
         llm = llm_factory("perfil")
+        _require_model(llm, "perfil", model)
         _attach_wait_reporter(llm, step, progress_queue)
         profile = await extract_profile(llm, pages, model=model, max_chars=config.max_page_chars)
         return profile.model_dump()
@@ -340,6 +364,7 @@ async def _run_step(
         templates = select_templates_for_profile(profile["business_model"]["value"], profile.get("conteudo_forte", False))
         model = config.model_for_task.get("anuncios", "")
         llm = llm_factory("anuncios")
+        _require_model(llm, "anuncios", model)
         _attach_wait_reporter(llm, step, progress_queue)
         prompts_output_dir = Path(config.output_dir) / context["domain"] / context["audit_id"] / "prompts_preenchidos"
         ads = await generate_all_ads(
@@ -533,6 +558,7 @@ def run_audit_sync(
     import asyncio as _asyncio
 
     from auditor.appconfig import build_llm_client_for_task, load_config
+    from auditor.appconfig import model_for_task as _model_for_task
     from auditor.llm.mock import MockLLMClient
 
     app_config = load_config()
@@ -567,6 +593,8 @@ def run_audit_sync(
         tracking_pages=app_config["tracking"]["pages"],
         max_page_chars=app_config["llm"].get("max_page_chars", 4000),
         owner_services=list(app_config.get("owner_services", [])),
+        model_for_task={} if mock else {task: _model_for_task(app_config, task) for task in ("analise", "keywords", "perfil", "anuncios")},
+        fast=fast,
         only=steps_to_run,
         resume=resume,
     )

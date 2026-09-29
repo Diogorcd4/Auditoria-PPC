@@ -6,7 +6,8 @@ import httpx
 import pytest
 
 from auditor.llm.mock import MockLLMClient
-from auditor.pipeline import DependencyNotMetError, PipelineConfig, _format_error, run_pipeline
+from auditor.llm.openai_compat import OpenAICompatClient
+from auditor.pipeline import DependencyNotMetError, PipelineConfig, _format_error, _require_model, run_audit_sync, run_pipeline
 
 
 def test_format_error_names_the_exception_class_when_the_message_is_empty():
@@ -17,6 +18,55 @@ def test_format_error_names_the_exception_class_when_the_message_is_empty():
 
 def test_format_error_keeps_a_real_message_untouched():
     assert _format_error(ValueError("algo específico correu mal")) == "algo específico correu mal"
+
+
+def test_require_model_raises_a_clear_pt_pt_message_naming_the_task_for_openai_compatible():
+    client = OpenAICompatClient(base_url="https://example.test/v1", api_key="k")
+    with pytest.raises(RuntimeError) as excinfo:
+        _require_model(client, "analise", "")
+    assert "analise" in str(excinfo.value)
+    assert "config.yaml" in str(excinfo.value)
+
+
+def test_require_model_does_nothing_for_ollama_or_a_non_empty_model():
+    client = OpenAICompatClient(base_url="https://example.test/v1", api_key="k")
+    _require_model(client, "analise", "gemini-flash-lite-latest")  # não deve levantar nada
+    _require_model(MockLLMClient(), "analise", "")  # backends que não exigem modelo explícito
+
+
+@pytest.mark.asyncio
+async def test_comunicacao_never_calls_the_api_when_the_task_model_is_empty(make_site_server, tmp_path, browser, monkeypatch):
+    """Reproduz a causa-raiz relatada: `python -m auditor audit <url> --fast` falhava com
+    HTTP 400 'model is not specified' em TODOS os pedidos porque model_for_task chegava vazio
+    ao openai_compatible. Agora falha logo, em Python, sem nunca chegar a fazer um pedido."""
+    _write_site(tmp_path / "site")
+    base_url = make_site_server(tmp_path / "site")
+    llm = OpenAICompatClient(base_url="https://example.test/v1", api_key="k")
+
+    async def _never_call_the_api(*args, **kwargs):
+        raise AssertionError("não devia ter sido feito nenhum pedido HTTP com o modelo vazio")
+
+    monkeypatch.setattr(OpenAICompatClient, "generate", _never_call_the_api)
+
+    config = PipelineConfig(
+        url=base_url,
+        max_pages=5,
+        delay_seconds=0,
+        keyword_delay_seconds=0,
+        keyword_use_alphabet=False,
+        output_dir=tmp_path / "output",
+        cache_dir=tmp_path / ".cache",
+        model_for_task={},  # exactamente o bug: nenhum modelo configurado para nenhuma tarefa
+    )
+
+    events = []
+    async with httpx.AsyncClient(transport=_keyword_mock_transport()) as http_client:
+        async for event in run_pipeline(config, llm, browser=browser, http_client=http_client):
+            events.append(event)
+
+    comunicacao_error = next(e for e in events if e.step == "comunicacao" and e.status == "error")
+    assert "analise" in comunicacao_error.error
+    assert "model is not specified" not in comunicacao_error.error
 
 
 class _FailFirstNLLMClient(MockLLMClient):
@@ -125,3 +175,47 @@ async def test_sintese_reports_a_clear_dependency_error_when_every_page_fails(ma
     # nunca deve aparecer como um KeyError('comunicacao') em bruto - tem de ser uma frase legível
     assert "'comunicacao'" not in sintese_error.error
     assert "Comunicação" in sintese_error.error
+
+
+def test_run_audit_sync_passes_model_for_task_from_config_to_the_pipeline(monkeypatch):
+    """Regressão exacta do bug relatado: `python -m auditor audit <url> --fast` construía o
+    PipelineConfig sem `model_for_task`, por isso todas as tarefas recebiam model="" mesmo
+    com o modelo preenchido no config.yaml (secção 1). Isto verifica que run_audit_sync
+    passa sempre o dicionário de modelos ao pipeline, sem chegar a correr nada real."""
+    captured_config = {}
+
+    async def fake_run_pipeline(config, llm, **kwargs):
+        captured_config["config"] = config
+        return
+        yield  # pragma: no cover - torna esta função um gerador assíncrono, nunca executado
+
+    def fake_load_config():
+        return {
+            "crawl": {"delay_seconds": 0, "respect_robots": True},
+            "tracking": {"pages": 4},
+            "llm": {
+                "max_page_chars": 4000,
+                "tasks": {
+                    "analise": {"model": "gemini-flash-lite-latest"},
+                    "keywords": {"model": "gemini-flash-lite-latest"},
+                    "perfil": {"model": "gemini-flash-lite-latest"},
+                    "anuncios": {"model": "gemini-flash-lite-latest"},
+                },
+            },
+            "owner_services": [],
+        }
+
+    monkeypatch.setattr("auditor.appconfig.load_config", fake_load_config)
+    monkeypatch.setattr("auditor.appconfig.build_llm_client_for_task", lambda config, task: object())
+    monkeypatch.setattr("auditor.pipeline.run_pipeline", fake_run_pipeline)
+
+    run_audit_sync("example.pt", fast=True)
+
+    model_for_task = captured_config["config"].model_for_task
+    assert model_for_task == {
+        "analise": "gemini-flash-lite-latest",
+        "keywords": "gemini-flash-lite-latest",
+        "perfil": "gemini-flash-lite-latest",
+        "anuncios": "gemini-flash-lite-latest",
+    }
+    assert captured_config["config"].fast is True

@@ -254,7 +254,7 @@ async def test_get_settings_returns_the_expected_keys(client, settings_env):
     assert resp.status_code == 200
     data = resp.json()
     assert set(data.keys()) == {"app_name", "owner_services", "llm", "crawl", "tracking"}
-    assert data["llm"]["backend"] == "ollama"
+    assert data["llm"]["backend"] == "openai_compatible"
 
 
 @pytest.mark.asyncio

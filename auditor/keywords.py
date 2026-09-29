@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import re
 from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
@@ -16,6 +17,17 @@ from auditor.llm_json import PT_PT_INSTRUCTION, generate_json, wrap_site_content
 
 ALPHABET = list("abcdefghijklmnopqrstuvwxyz")
 KEYWORD_SUFFIXES = ["preço", "quanto custa", "melhor", "perto de mim", "opiniões"]
+# Só as 3 melhores sementes recebem a barredura a-z completa (26 pedidos cada); as restantes
+# recebem só os sufixos - o a-z em todas as sementes é o que gerava centenas de termos de
+# baixa qualidade (secção 8 do pedido de correcção).
+ALPHABET_TOP_N_SEEDS = 3
+
+# Rótulos de menu/navegação que nunca são termos de pesquisa reais, mesmo quando sobrevivem ao
+# filtro de 2 a 4 palavras (ex.: "sobre mim", "quem somos").
+NAV_STOPWORDS = {
+    "sobre mim", "quem somos", "fale connosco", "entre em contacto", "a nossa equipa",
+    "termos e condicoes", "termos e condições", "politica de privacidade", "política de privacidade",
+}
 
 STAGE_KEYWORDS = {
     "decisao": ["preço", "quanto custa", "orçamento", "financiamento", "marcar", "agendar", "comprar"],
@@ -38,22 +50,48 @@ def heuristic_stage(term: str) -> str:
     return "solucao"
 
 
+def _clean_seed(text: Optional[str]) -> Optional[str]:
+    """Só aceita frases curtas de pesquisa (2 a 4 palavras, sem pontuação final) - nunca um
+    H1/título inteiro (slogan, frase completa) nem um rótulo de menu de navegação isolado
+    (secção 8 do pedido de correcção)."""
+    if not text:
+        return None
+    cleaned = text.strip().strip(".,!?;:—–-").strip()
+    cleaned = re.sub(r"\s+", " ", cleaned).lower()
+    if not cleaned or len(cleaned) > 40:
+        return None
+    if cleaned in NAV_STOPWORDS:
+        return None
+    word_count = len(cleaned.split())
+    if word_count < 2 or word_count > 4:
+        return None
+    return cleaned
+
+
 def derive_seed_terms(pages: list[PageData], *, max_seeds: int = 8) -> list[str]:
+    """Fallback heurístico, só usado quando infer_seed_terms (via IA) falha ou não devolve
+    nada (secção 8): H1s e o primeiro segmento do título de cada página, filtrados por
+    _clean_seed para nunca incluir frases inteiras/slogans nem rótulos de navegação."""
     candidates: "OrderedDict[str, None]" = OrderedDict()
 
     home = next((p for p in pages if p.type == "home"), pages[0] if pages else None)
     if home and home.h1:
-        candidates.setdefault(home.h1[0].lower(), None)
+        cleaned = _clean_seed(home.h1[0])
+        if cleaned:
+            candidates.setdefault(cleaned, None)
 
     for page in pages:
         if page.type in ("servico", "produto", "categoria") and page.h1:
-            candidates.setdefault(page.h1[0].lower(), None)
+            cleaned = _clean_seed(page.h1[0])
+            if cleaned:
+                candidates.setdefault(cleaned, None)
 
     for page in pages:
         if page.title:
-            first_segment = page.title.split(" — ")[0].split(" | ")[0].split(" - ")[0].strip().lower()
-            if first_segment:
-                candidates.setdefault(first_segment, None)
+            first_segment = page.title.split(" — ")[0].split(" | ")[0].split(" - ")[0]
+            cleaned = _clean_seed(first_segment)
+            if cleaned:
+                candidates.setdefault(cleaned, None)
 
     return list(candidates.keys())[:max_seeds]
 
@@ -80,19 +118,21 @@ async def fetch_observed_terms(
     delay_seconds: float = 0.3,
     cache_dir: Path | str = ".cache/keywords",
     use_alphabet: bool = True,
+    alphabet_top_n: int = ALPHABET_TOP_N_SEEDS,
 ) -> list[str]:
-    """Google Autocomplete, expanded per seed with the suffixes and the a-z sweep the
-    briefing asks for (secção 4.4). Every query is cached to disk so a repeated run doesn't
-    re-hit the network, and there's a pause between requests."""
+    """Google Autocomplete, expanded per seed with the suffixes for every seed, and the a-z
+    sweep only for the top `alphabet_top_n` seeds (secção 8: a barredura completa em todas as
+    sementes gerava centenas de termos de baixa qualidade). Every query is cached to disk so
+    a repeated run doesn't re-hit the network, and there's a pause between requests."""
     cache_path = Path(cache_dir)
     cache_path.mkdir(parents=True, exist_ok=True)
     results: "OrderedDict[str, None]" = OrderedDict()
 
-    for seed in seeds:
+    for index, seed in enumerate(seeds):
         suffix_queries = [f"{seed} {s}" for s in KEYWORD_SUFFIXES]
         if city:
             suffix_queries.append(f"{seed} {city}")
-        alphabet_queries = [f"{seed} {letter}" for letter in ALPHABET] if use_alphabet else []
+        alphabet_queries = [f"{seed} {letter}" for letter in ALPHABET] if use_alphabet and index < alphabet_top_n else []
         queries = [seed] + alphabet_queries + suffix_queries
 
         for query in queries:
@@ -144,6 +184,35 @@ def _pages_summary(pages: list[PageData]) -> str:
     return "\n".join(f"- {p.type}: {p.title or p.url}" for p in pages)
 
 
+class SeedTerms(BaseModel):
+    seeds: list[str] = Field(default_factory=list)
+
+
+def _seed_system_prompt() -> str:
+    return (
+        "És um especialista em SEO e Google Ads. A partir de um resumo das páginas de um site, "
+        "sugere entre 5 e 8 termos-semente de pesquisa para este negócio. Cada termo tem de ser "
+        "uma frase curta de pesquisa, com 2 a 4 palavras, sem pontuação final. Nunca uses uma "
+        "frase completa, um slogan, um título/headline inteiro, nem um rótulo de menu de "
+        "navegação isolado (por exemplo, nunca 'início', 'serviços', 'sobre nós', 'contacto' ou "
+        "'blog' sozinhos). Pensa em como um cliente pesquisaria no Google para encontrar este "
+        "tipo de negócio. " + PT_PT_INSTRUCTION
+    )
+
+
+async def infer_seed_terms(llm: LLMClient, pages: list[PageData], *, model: str = "") -> list[str]:
+    """Pede ao modelo 5 a 8 termos-semente a partir do resumo do site (secção 8): é a fonte
+    primária de sementes, mais fiável do que a heurística de H1s/títulos (que pode acabar por
+    usar slogans inteiros ou rótulos de navegação). derive_seed_terms só entra em acção se
+    isto falhar ou devolver uma lista vazia."""
+    prompt = (
+        f"{wrap_site_content(_pages_summary(pages))}\n\n"
+        "Devolve APENAS um objecto JSON com o campo: seeds (lista de 5 a 8 termos-semente)."
+    )
+    result = await generate_json(llm, task="keywords", system=_seed_system_prompt(), prompt=prompt, schema_model=SeedTerms, model=model)
+    return result.seeds
+
+
 async def infer_keywords_synthesis(
     llm: LLMClient,
     *,
@@ -181,7 +250,14 @@ async def build_keywords(
     """The observed (Google Autocomplete) and inferred (LLM) layers fail independently
     (secção B.6): a blocked/slow Autocomplete never takes down the inferred layer and
     vice-versa. The whole step only raises if BOTH layers come back empty."""
-    seeds = derive_seed_terms(pages)
+    seeds: list[str] = []
+    try:
+        raw_seeds = await infer_seed_terms(llm, pages, model=model)
+        seeds = list(OrderedDict.fromkeys(cleaned for s in raw_seeds if (cleaned := _clean_seed(s))))
+    except Exception as exc:  # noqa: BLE001 - falls back to the H1/title heuristic below
+        print(f"[termos] não foi possível inferir sementes com IA, a usar heurística de H1/título: {exc}")
+    if not seeds:
+        seeds = derive_seed_terms(pages)
     print(f"[termos] sementes: {seeds}")
 
     raw_observed: list[str] = []

@@ -28,7 +28,7 @@ export async function renderSettings(root) {
   wrap.append(
     el("div", { class: "eyebrow" }, "Definições"),
     el("h1", { class: "section-title", style: "margin-bottom:4px" }, "Motor de IA, limites e marca"),
-    el("p", { class: "section-summary", style: "margin-bottom:24px" }, "Tudo aqui fica gravado em config.yaml, no seu computador.")
+    el("p", { class: "section-summary", style: "margin-bottom:24px" }, "Tudo aqui fica gravado em config.local.yaml, no seu computador (nunca se perde ao actualizar o projecto).")
   );
   root.appendChild(wrap);
 
@@ -82,7 +82,12 @@ export async function renderSettings(root) {
   }
   backendSelect.addEventListener("change", syncBackendFieldsVisibility);
 
-  async function refreshOpenAICompatibleStatus() {
+  // Quando o preset "Gemini gratuito" é usado, o backend das quatro tarefas passa a ser
+  // definido explicitamente (nunca fica a "" à espera de herdar o backend global) - secção 5:
+  // o botão tem de actualizar backend E modelo das quatro tarefas, não só o backend geral.
+  let taskBackendOverride = null;
+
+  async function refreshOpenAICompatibleStatus({ forceModel = false } = {}) {
     const dot = openaiStatusRow.querySelector(".dot");
     const label = openaiStatusRow.querySelector("span:last-child");
     dot.className = "dot";
@@ -94,7 +99,7 @@ export async function renderSettings(root) {
       if (suggested_model) {
         for (const task of TASKS) {
           const select = modelSelects[task.key];
-          if (!select.value) {
+          if (forceModel || !select.value) {
             select.innerHTML = "";
             select.appendChild(el("option", { value: suggested_model, selected: "selected" }, suggested_model));
           }
@@ -106,7 +111,7 @@ export async function renderSettings(root) {
     }
     return { reachable, suggested_model };
   }
-  openaiTestBtn.addEventListener("click", refreshOpenAICompatibleStatus);
+  openaiTestBtn.addEventListener("click", () => refreshOpenAICompatibleStatus());
 
   geminiPresetBtn.addEventListener("click", async () => {
     backendSelect.value = "openai_compatible";
@@ -115,8 +120,18 @@ export async function renderSettings(root) {
     geminiPresetBtn.disabled = true;
     geminiPresetBtn.textContent = "A testar…";
     try {
-      const { reachable, suggested_model } = await refreshOpenAICompatibleStatus();
-      showToast(reachable ? `Gemini gratuito activado${suggested_model ? ` — modelo sugerido: ${suggested_model}` : ""}.` : "Não foi possível ligar ao Gemini. Verifique AUDITOR_API_KEY no .env.");
+      const { reachable, suggested_model } = await refreshOpenAICompatibleStatus({ forceModel: true });
+      if (reachable) {
+        taskBackendOverride = "openai_compatible";
+        if (!suggested_model) {
+          for (const task of TASKS) {
+            const select = modelSelects[task.key];
+            select.innerHTML = "";
+            select.appendChild(el("option", { value: "gemini-flash-lite-latest", selected: "selected" }, "gemini-flash-lite-latest"));
+          }
+        }
+      }
+      showToast(reachable ? `Gemini gratuito activado nas quatro tarefas${suggested_model ? ` — modelo: ${suggested_model}` : " — modelo: gemini-flash-lite-latest"}.` : "Não foi possível ligar ao Gemini. Verifique AUDITOR_API_KEY no .env.");
     } finally {
       geminiPresetBtn.disabled = false;
       geminiPresetBtn.textContent = "Usar Gemini gratuito";
@@ -217,7 +232,7 @@ export async function renderSettings(root) {
           ollama_url: urlInput.value,
           num_ctx: Number(numCtxInput.value) || settings.llm.num_ctx,
           openai_compatible: { ...settings.llm.openai_compatible, base_url: openaiBaseUrlInput.value },
-          tasks: Object.fromEntries(TASKS.map((t) => [t.key, { backend: settings.llm.tasks?.[t.key]?.backend || "", model: modelSelects[t.key].value }])),
+          tasks: Object.fromEntries(TASKS.map((t) => [t.key, { backend: taskBackendOverride ?? (settings.llm.tasks?.[t.key]?.backend || ""), model: modelSelects[t.key].value }])),
         },
         crawl: {
           max_pages: Number(maxPagesInput.value) || settings.crawl.max_pages,

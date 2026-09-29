@@ -54,6 +54,12 @@ class OpenAICompatClient(LLMClient):
             return {}
         return {"Authorization": f"Bearer {self.api_key}"}
 
+    @staticmethod
+    def _strip_model_prefix(model: str) -> str:
+        """Aceita o nome do modelo com ou sem o prefixo "models/" (secção 3): a API de
+        list_models devolve-o assim, mas o endpoint de chat completions só aceita o nome puro."""
+        return model[len("models/"):] if model.startswith("models/") else model
+
     async def _respect_rate_limit(self) -> None:
         now = time.monotonic()
         self._request_times = [t for t in self._request_times if now - t < 60]
@@ -71,6 +77,13 @@ class OpenAICompatClient(LLMClient):
                 f"configurado ({self.daily_limit}). Tente novamente amanhã, mude de modelo/backend "
                 "nas Definições, ou aumente 'llm.daily_limit' em config.yaml."
             )
+
+    def _discard_last_rate_limit_slot(self) -> None:
+        """Um pedido que falhou com 400/401/403/404 nunca deveria ter contado para o limite
+        por minuto - não é repetido, por isso não faz sentido que continue a ocupar uma fatia
+        da janela de 60s (secção 4)."""
+        if self._request_times:
+            self._request_times.pop()
 
     def _payload(self, *, system: str, prompt: str, model: str, temperature: float, json_schema: Optional[dict]) -> dict:
         payload: dict[str, Any] = {
@@ -105,6 +118,12 @@ class OpenAICompatClient(LLMClient):
         json_schema: Optional[dict[str, Any]] = None,
         temperature: float = 0.2,
     ) -> LLMResponse:
+        model = self._strip_model_prefix(model)
+        if not model:
+            # Rede de segurança: o pipeline já devia ter recusado isto mais a montante, com o
+            # nome da tarefa em falta (secção 2) - isto nunca deveria disparar em uso normal.
+            raise ValueError("Falta o nome do modelo a usar com o backend openai_compatible.")
+
         start = time.monotonic()
         headers = self._headers()
         last_exc: Optional[Exception] = None
@@ -125,24 +144,31 @@ class OpenAICompatClient(LLMClient):
                     ) from exc
                 continue
 
-            self.request_count += 1
-
+            # 400/401/403/404 nunca são repetidos nem consomem a quota por minuto (secção 4):
+            # repetir um pedido mal formado ou uma chave/modelo inválidos nunca vai ter sucesso,
+            # e só serve para esgotar o limite de pedidos por minuto e provocar esperas inúteis.
             if resp.status_code in (401, 403):
+                self._discard_last_rate_limit_slot()
                 raise OpenAICompatAuthError(
                     "Chave de API em falta ou inválida para este backend. Verifique AUDITOR_API_KEY "
                     "no ficheiro .env (nunca em config.yaml)."
                 )
             if resp.status_code == 404:
+                self._discard_last_rate_limit_slot()
                 raise OpenAICompatModelNotFoundError(
                     f"O modelo '{model}' não foi encontrado neste backend. Confirme o nome exacto "
                     "nas Definições (o menu é preenchido a partir dos modelos que a API devolve)."
                 )
-            if resp.status_code == 400 and json_schema and not self._prefers_json_object:
-                # Some OpenAI-compatible endpoints don't support response_format=json_schema yet.
+            if resp.status_code == 400:
                 body_text = resp.text
-                if "response_format" in body_text.lower() or "json_schema" in body_text.lower():
+                # Alguns backends compatíveis com OpenAI ainda não suportam response_format=
+                # json_schema - esse único caso justifica repetir de imediato, com json_object.
+                if json_schema and not self._prefers_json_object and ("response_format" in body_text.lower() or "json_schema" in body_text.lower()):
                     self._prefers_json_object = True
+                    self._discard_last_rate_limit_slot()
                     continue
+                self._discard_last_rate_limit_slot()
+                raise RuntimeError(f"O backend respondeu com o estado 400 (pedido inválido, não repetido): {body_text[:300]}")
             if resp.status_code == 429:
                 body_text = resp.text
                 if self._is_daily_quota_error(body_text):
@@ -162,11 +188,17 @@ class OpenAICompatClient(LLMClient):
             try:
                 resp.raise_for_status()
             except httpx.HTTPStatusError as exc:
+                # 5xx: erro do lado do servidor, vale a pena repetir com recuo exponencial.
                 last_exc = exc
                 if attempt >= self.max_retries:
                     raise RuntimeError(f"O backend respondeu com o estado {resp.status_code}: {resp.text[:300]}") from exc
+                wait_seconds = min(2**attempt, 30)
+                if self.on_wait:
+                    self.on_wait(wait_seconds)
+                await asyncio.sleep(wait_seconds)
                 continue
 
+            self.request_count += 1
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
             return LLMResponse(content=content, model=model, backend="openai_compatible", duration_seconds=time.monotonic() - start)

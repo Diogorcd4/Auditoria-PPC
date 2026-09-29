@@ -7,7 +7,11 @@ owner_services:
   - "Copy e conversão"
 
 llm:
-  backend: ollama
+  # Por defeito usa-se o Gemini gratuito (secção 7): não precisa de GPU nem de instalar nada
+  # além da chave de API, o que funciona logo num PC comum. O Ollama fica como alternativa
+  # local - para o usar, muda "backend"/o backend de cada tarefa para "ollama" nas Definições
+  # (ou em config.local.yaml) e confirma que "ollama_url" aponta para o servidor certo.
+  backend: openai_compatible
   ollama_url: "http://localhost:11434"
   ollama_keep_alive: "30m"
   num_ctx: 4096
@@ -19,23 +23,23 @@ llm:
   # Texto de cada página enviado ao modelo, em caracteres (protege modelos pequenos/lentos).
   max_page_chars: 4000
   # Preset para quem usa a API gratuita do Gemini em vez do Ollama local (ver README). A
-  # chave NUNCA fica aqui - lê-se de AUDITOR_API_KEY no .env. Só é usado quando alguma tarefa
-  # (ou o backend global) está definida como "openai_compatible".
+  # chave NUNCA fica aqui - lê-se de AUDITOR_API_KEY no .env, num ficheiro local nunca
+  # enviado para o Git.
   openai_compatible:
     base_url: "https://generativelanguage.googleapis.com/v1beta/openai/"
   tasks:
     analise:
-      backend: ollama
-      model: ""
+      backend: openai_compatible
+      model: "gemini-flash-lite-latest"
     keywords:
-      backend: ollama
-      model: ""
+      backend: openai_compatible
+      model: "gemini-flash-lite-latest"
     perfil:
-      backend: ollama
-      model: ""
+      backend: openai_compatible
+      model: "gemini-flash-lite-latest"
     anuncios:
-      backend: ollama
-      model: ""
+      backend: openai_compatible
+      model: "gemini-flash-lite-latest"
 
 crawl:
   max_pages: 25

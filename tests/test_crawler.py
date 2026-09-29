@@ -1,6 +1,6 @@
 import pytest
 
-from auditor.crawler import classify_page_type, crawl_site, normalize_url, should_skip_url
+from auditor.crawler import PageData, _drop_english_duplicates, classify_page_type, crawl_site, normalize_url, page_priority, should_skip_url
 
 
 def test_normalize_url_drops_query_string_fragment_and_trailing_slash():
@@ -25,10 +25,42 @@ def test_should_skip_url_flags_files_and_private_areas():
         ("https://example.com/contacto", "contacto"),
         ("https://example.com/blog/artigo-1", "blog"),
         ("https://example.com/qualquer-coisa", "outro"),
+        ("https://example.com/privacy-policy", "legal"),
+        ("https://example.com/politica-de-privacidade", "legal"),
+        ("https://example.com/termos-e-condicoes", "legal"),
     ],
 )
 def test_classify_page_type_from_url_keywords(url, expected):
     assert classify_page_type(url) == expected
+
+
+def test_fast_priority_puts_institutional_pages_before_blog_and_legal():
+    fast_order = sorted(["blog", "legal", "contacto", "sobre", "servico", "home"], key=lambda t: page_priority(t, fast=True))
+    assert fast_order == ["home", "servico", "sobre", "contacto", "blog", "legal"]
+
+
+def _page(page_id: str, url: str) -> PageData:
+    return PageData(id=page_id, url=url, type=classify_page_type(url))
+
+
+def test_drop_english_duplicates_removes_en_pages_that_have_a_pt_equivalent():
+    pages = [
+        _page("home", "https://example.pt/"),
+        _page("en-home", "https://example.pt/en"),
+        _page("servicos", "https://example.pt/servicos"),
+        _page("en-servicos", "https://example.pt/en/servicos"),
+    ]
+    result = _drop_english_duplicates(pages)
+    assert [p.id for p in result] == ["home", "servicos"]
+
+
+def test_drop_english_duplicates_keeps_an_en_page_with_no_pt_equivalent():
+    pages = [
+        _page("home", "https://example.pt/"),
+        _page("en-only", "https://example.pt/en/only-in-english"),
+    ]
+    result = _drop_english_duplicates(pages)
+    assert [p.id for p in result] == ["home", "en-only"]
 
 
 def _write(path, content):

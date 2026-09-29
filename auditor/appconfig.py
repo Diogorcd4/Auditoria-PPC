@@ -29,13 +29,42 @@ def get_api_key() -> str:
     return os.environ.get("AUDITOR_API_KEY", "")
 
 
+def _local_config_path(path: Path | str) -> Path:
+    """config.yaml -> config.local.yaml, no mesmo directório. O ficheiro do repositório fica
+    só com os valores por defeito; as definições reais do utilizador (backend, modelos,
+    base_url, limites) vivem aqui, fora do Git, e sobrevivem a trocar de zip/fazer pull
+    (secção 7 do pedido de correcção)."""
+    p = Path(path)
+    return p.with_name(f"{p.stem}.local{p.suffix}")
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    merged = dict(base)
+    for key, value in override.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def load_config(path: Path | str = CONFIG_PATH) -> dict:
     with open(path, encoding="utf-8") as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    local_path = _local_config_path(path)
+    if local_path.exists():
+        with open(local_path, encoding="utf-8") as f:
+            local_config = yaml.safe_load(f) or {}
+        config = _deep_merge(config, local_config)
+    return config
 
 
 def save_config(config: dict, path: Path | str = CONFIG_PATH) -> None:
-    with open(path, "w", encoding="utf-8") as f:
+    """Grava sempre em config.local.yaml (nunca no config.yaml do repositório), para que as
+    definições do utilizador não se percam ao trocar o zip do projecto ou fazer git pull."""
+    local_path = _local_config_path(path)
+    local_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(local_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(config, f, allow_unicode=True, sort_keys=False)
 
 

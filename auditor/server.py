@@ -18,6 +18,7 @@ from auditor.llm.mock import MockLLMClient
 from auditor.pipeline import (
     PipelineConfig,
     _format_error,
+    _require_model,
     count_ads_assets,
     delete_saved_audit,
     load_history,
@@ -77,6 +78,7 @@ def _pipeline_config_from_app_config(url: str, max_pages: int, app_config: dict,
         max_page_chars=app_config["llm"].get("max_page_chars", 4000),
         owner_services=list(app_config.get("owner_services", [])),
         model_for_task={task: model_for_task(app_config, task) for task in ("analise", "keywords", "perfil", "anuncios")},
+        fast=fast,
         output_dir=OUTPUT_DIR,
         cache_dir=CACHE_DIR,
         # A fixed slot per domain (rather than a fresh timestamp every time) is what makes
@@ -151,6 +153,10 @@ async def regenerate_ads(payload: dict = Body(...)) -> JSONResponse:
     llm = MockLLMClient() if payload.get("mock", False) else build_llm_client_for_task(app_config, "anuncios")
     templates = select_templates_for_profile(profile["business_model"]["value"], profile.get("conteudo_forte", False))
     model = model_for_task(app_config, "anuncios")
+    try:
+        _require_model(llm, "anuncios", model)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
 
     ads = await generate_all_ads(llm, templates, profile, pages, model=model)
     valid, total = count_ads_assets(ads)
@@ -193,7 +199,10 @@ def update_settings(payload: dict = Body(...)) -> JSONResponse:
     for key in SETTINGS_KEYS:
         if key in payload:
             config[key] = payload[key]
-    save_config(config)
+    # Só as chaves de Definições vão para config.local.yaml - nunca "validation" (que não é
+    # editável aqui), para uma actualização futura das regras de validação nunca ficar
+    # bloqueada por uma cópia antiga guardada por engano no ficheiro local do utilizador.
+    save_config({key: config[key] for key in SETTINGS_KEYS if key in config})
     return JSONResponse({key: config[key] for key in SETTINGS_KEYS if key in config})
 
 

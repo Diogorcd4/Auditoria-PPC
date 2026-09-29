@@ -20,6 +20,21 @@ pip install -e .
 playwright install chromium
 ```
 
+### Atualizar sem perder as definições
+
+As suas definições (backend, modelos, URL base, limites) ficam sempre em
+**`config.local.yaml`**, na raiz do projecto - nunca em `config.yaml` (que faz parte do
+repositório e só tem valores por defeito) e nunca no Git. Para atualizar o Auditor (novo zip
+ou `git pull`) sem perder o que configurou:
+
+1. Copie `.env` e `config.local.yaml` da instalação antiga para a pasta nova (se já os
+   tinha).
+2. Corra `pip install -e .` outra vez na pasta nova.
+3. Arranque normalmente - as suas definições aparecem tal como as deixou.
+
+Nunca escreva a sua chave de API em nenhum ficheiro que não seja `.env`, e nunca a cole
+num terminal partilhado ou num registo (log) - o Auditor nunca a imprime.
+
 ### Instalar o Ollama (motor de IA gratuito)
 
 1. Descarregue e instale o Ollama a partir de [ollama.com/download](https://ollama.com/download).
@@ -36,6 +51,26 @@ playwright install chromium
 
 O Ollama fica a correr em segundo plano (`http://localhost:11434`) — o Auditor liga-se lá
 automaticamente. Não é preciso nenhuma chave de API.
+
+### Usar o Gemini gratuito em vez do Ollama (recomendado sem GPU)
+
+Por omissão o Auditor já vem configurado para o **Gemini gratuito** (backend
+`openai_compatible`), porque um modelo local sem GPU costuma ser demasiado lento. Só precisa
+de uma chave de API gratuita:
+
+1. Crie uma chave em [aistudio.google.com/apikey](https://aistudio.google.com/apikey).
+2. Copie `.env.example` para `.env` (na raiz do projecto) e escreva a chave:
+   ```
+   AUDITOR_API_KEY=a-sua-chave-aqui
+   ```
+   **Nunca** ponha a chave em `config.yaml` ou `config.local.yaml` — só o `.env` é lido para
+   isto, e o `.env` nunca é enviado para o Git.
+3. Nas Definições da interface, clique em **"Usar Gemini gratuito"** para confirmar a
+   ligação e escolher automaticamente um modelo Flash-Lite (rápido e dentro do plano
+   gratuito). O botão testa a ligação no servidor - a chave nunca passa pelo browser.
+
+Se preferir o Ollama local, mude o backend para "Ollama (local)" nas Definições (ou em
+`config.local.yaml`) depois de o instalar como acima.
 
 ## Arrancar
 
@@ -60,6 +95,7 @@ python -m auditor audit <url> [opções]
 | `--dry-run` | Mostra o que seria feito, sem executar nada |
 | `--resume` | Retoma a auditoria mais recente por concluir para este domínio, sem repetir os passos já feitos |
 | `--mock` | Usa dados fictícios em vez do Ollama (útil para testar sem esperar por um modelo local) |
+| `--fast` | Limita a 5 páginas, priorizando home/serviços/sobre/contacto - útil para testar rapidamente com modelos pequenos/lentos |
 
 ## O que a ferramenta faz
 

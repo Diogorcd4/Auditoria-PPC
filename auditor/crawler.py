@@ -30,6 +30,13 @@ SKIP_PATH_KEYWORDS = [
 ]
 
 PAGE_TYPE_KEYWORDS = {
+    # verificado antes de tudo o resto: uma página legal nunca deve ser classificada como
+    # "servico"/"produto" só porque o caminho contém coincidentemente uma dessas palavras.
+    "legal": [
+        "privacy-policy", "privacidade", "politica-de-privacidade", "cookies", "cookie-policy",
+        "termos-e-condicoes", "termos-condicoes", "terms-and-conditions", "terms-of-service",
+        "aviso-legal", "condicoes-gerais", "rgpd", "gdpr",
+    ],
     "precos": ["preco", "precos", "tarifario", "pricing", "plano", "planos"],
     "servico": ["servico", "servicos", "service", "services"],
     "produto": ["produto", "produtos", "product", "products"],
@@ -40,7 +47,11 @@ PAGE_TYPE_KEYWORDS = {
     "landing": ["landing", "lp-", "promo"],
     "blog": ["blog", "noticias", "artigo", "news", "article"],
 }
-PRIORITY_ORDER = ["home", "servico", "produto", "categoria", "precos", "sobre", "contacto", "faq", "landing", "blog", "outro"]
+PRIORITY_ORDER = ["home", "servico", "produto", "categoria", "precos", "sobre", "contacto", "faq", "landing", "blog", "legal", "outro"]
+# Prioridade usada em auditorias --fast (secção 9): páginas institucionais primeiro, o resto
+# (incluindo blog/legal) só depois de esgotar essas - nunca vale a pena gastar as poucas
+# páginas do modo rápido em conteúdo secundário.
+FAST_PRIORITY_ORDER = ["home", "servico", "sobre", "contacto", "produto", "categoria", "precos", "faq", "landing", "blog", "legal", "outro"]
 
 TESTIMONIAL_KEYWORDS = ["testimonial", "depoimento", "testemunho", "review"]
 BADGE_KEYWORDS = ["garantia", "satisfação garantida", "certificado", "selo", "iso 9001", "devolução gratuita"]
@@ -118,11 +129,31 @@ def classify_page_type(url: str) -> str:
     return "outro"
 
 
-def page_priority(page_type: str) -> int:
+def page_priority(page_type: str, *, fast: bool = False) -> int:
+    order = FAST_PRIORITY_ORDER if fast else PRIORITY_ORDER
     try:
-        return PRIORITY_ORDER.index(page_type)
+        return order.index(page_type)
     except ValueError:
-        return len(PRIORITY_ORDER)
+        return len(order)
+
+
+EN_PREFIX_RE = re.compile(r"^/en(/.*)?$", re.IGNORECASE)
+
+
+def _drop_english_duplicates(pages: list[PageData]) -> list[PageData]:
+    """Ignora páginas /en/... quando a versão em português equivalente também foi rastreada
+    (secção 9): o mesmo conteúdo em inglês só duplicaria a análise de comunicação/perfil, sem
+    acrescentar nada, e este site é sempre auditado em PT-PT."""
+    known_paths = {urlparse(p.url).path or "/" for p in pages}
+
+    def _has_pt_equivalent(path: str) -> bool:
+        match = EN_PREFIX_RE.match(path)
+        if not match:
+            return False
+        pt_path = match.group(1) or "/"
+        return pt_path in known_paths
+
+    return [p for p in pages if not _has_pt_equivalent(urlparse(p.url).path or "/")]
 
 
 def _slugify(url: str) -> str:
@@ -285,13 +316,17 @@ async def crawl_site(
     cache_dir: str | Path = ".cache",
     refresh: bool = False,
     browser: Optional[Browser] = None,
+    fast: bool = False,
 ) -> CrawlResult:
     """Discover and extract up to `max_pages` same-domain pages, starting from `start_url`.
 
     Network errors on individual pages are recorded in `CrawlResult.errors` and never abort
     the rest of the crawl. Results are cached per URL under `cache_dir`; pass `refresh=True`
     to bypass the cache. Pass an already-launched `browser` to reuse it (e.g. across pipeline
-    steps, or a pinned browser in tests) instead of launching a new one for this call.
+    steps, or a pinned browser in tests) instead of launching a new one for this call. With
+    `fast=True`, páginas institucionais (home/serviços/sobre/contacto) têm prioridade sobre
+    blog/legal/outras, para as poucas páginas do modo rápido serem sempre as mais relevantes
+    para uma auditoria de comunicação/anúncios (secção 9).
     """
     if "://" not in start_url:
         start_url = f"https://{start_url}"
@@ -324,7 +359,7 @@ async def crawl_site(
                 queue = [u for u in discovered if u not in visited]
                 if not queue:
                     break
-                queue.sort(key=lambda u: (page_priority(classify_page_type(u)), u))
+                queue.sort(key=lambda u: (page_priority(classify_page_type(u), fast=fast), u))
                 url = queue[0]
                 visited.add(url)
 
@@ -376,4 +411,4 @@ async def crawl_site(
             finally:
                 await owned_browser.close()
 
-    return CrawlResult(domain=domain, pages=pages, errors=errors)
+    return CrawlResult(domain=domain, pages=_drop_english_duplicates(pages), errors=errors)
