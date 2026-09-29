@@ -7,8 +7,8 @@ const STEP_LABELS = {
   tracking: "Tracking",
   comunicacao: "Comunicação",
   sintese: "Síntese",
-  termos: "Termos",
   perfil: "Perfil",
+  termos: "Termos",
   anuncios: "Anúncios",
   relatorio: "Relatório",
 };
@@ -29,7 +29,24 @@ function renderStepsBar(stepStates) {
   );
 }
 
-export function runLiveAudit(root, url, { mock = false, retriesLeft = 1 } = {}) {
+async function startOrReuseJob(url, { mock, fast }) {
+  const res = await fetch("/api/audits", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url, mock, fast }),
+  });
+  if (!res.ok) throw new Error("Não foi possível iniciar a auditoria.");
+  return res.json(); // {id, reused}
+}
+
+/**
+ * Auditoria em tempo real, ligada a um job em segundo plano no servidor (secção B do pedido
+ * de correcção): fechar este separador, recarregar a página ou uma ligação SSE cair e
+ * voltar a ligar-se nunca cancela nem reinicia o job - só o botão "Cancelar" o faz. Abrir de
+ * novo #/audit/<url> (job em curso ou já terminado) reconstrói tudo a partir da reprodução de
+ * eventos que a ligação SSE já faz sozinha, desde o início do job.
+ */
+export async function runLiveAudit(root, url, { mock = false, fast = false } = {}) {
   root.innerHTML = "";
   const stepStates = {};
 
@@ -47,8 +64,20 @@ export function runLiveAudit(root, url, { mock = false, retriesLeft = 1 } = {}) 
   const logWrap = el("div", { class: "wrap", style: "margin-top:24px;display:flex;flex-direction:column;gap:10px" });
   root.append(header, logWrap);
 
-  const source = new EventSource(`/api/audit/stream?url=${encodeURIComponent(url)}${mock ? "&mock=true" : ""}`);
+  let jobId;
+  try {
+    const { id, reused } = await startOrReuseJob(url, { mock, fast });
+    jobId = id;
+    if (reused) {
+      logWrap.appendChild(el("div", { class: "card" }, "A ligar a uma auditoria já em curso para este site…"));
+    }
+  } catch (err) {
+    renderErrorCard(root, err.message || "Não foi possível iniciar a auditoria.", () => runLiveAudit(root, url, { mock, fast }));
+    return;
+  }
+
   let closed = false;
+  const source = new EventSource(`/api/audits/${encodeURIComponent(jobId)}/events`);
 
   const close = () => {
     if (!closed) {
@@ -57,11 +86,16 @@ export function runLiveAudit(root, url, { mock = false, retriesLeft = 1 } = {}) 
     }
   };
 
-  cancelBtn.addEventListener("click", () => {
+  cancelBtn.addEventListener("click", async () => {
     close();
+    cancelBtn.disabled = true;
+    try {
+      await fetch(`/api/audits/${encodeURIComponent(jobId)}/cancel`, { method: "POST" });
+    } catch {
+      // best-effort - a ligação local já foi fechada de qualquer forma
+    }
     showToast("Auditoria cancelada.");
     logWrap.appendChild(el("div", { class: "card" }, "Auditoria cancelada pelo utilizador."));
-    cancelBtn.disabled = true;
   });
 
   source.onmessage = (event) => {
@@ -75,7 +109,7 @@ export function runLiveAudit(root, url, { mock = false, retriesLeft = 1 } = {}) 
     const label = STEP_LABELS[payload.step] || payload.step;
 
     if (payload.status === "running") {
-      logWrap.appendChild(el("div", { class: "card", id: logId }, `A processar: ${label}…`));
+      if (!existing) logWrap.appendChild(el("div", { class: "card", id: logId }, `A processar: ${label}…`));
     } else if (payload.status === "progress") {
       const message = payload.message ? `${label}: ${payload.message}` : `A processar: ${label}…`;
       if (existing) existing.textContent = message;
@@ -94,7 +128,9 @@ export function runLiveAudit(root, url, { mock = false, retriesLeft = 1 } = {}) 
       const retryBtn = el("button", { class: "btn btn--ghost btn--sm" }, "Tentar de novo");
       retryBtn.addEventListener("click", () => {
         close();
-        runLiveAudit(root, url, { mock });
+        // Um novo POST /api/audits para o mesmo domínio arranca um job novo que retoma a
+        // partir dos checkpoints já guardados (resume=True) - só repete o passo que falhou.
+        runLiveAudit(root, url, { mock, fast });
       });
       const errorCard = el("div", { class: "error-card", id: logId }, [el("span", { class: "error-card__msg" }, message), retryBtn]);
       if (existing) existing.replaceWith(errorCard);
@@ -104,12 +140,16 @@ export function runLiveAudit(root, url, { mock = false, retriesLeft = 1 } = {}) 
 
   source.onerror = () => {
     if (closed) return;
-    close();
-    if (retriesLeft > 0) {
-      logWrap.appendChild(el("div", { class: "card" }, "Ligação ao servidor perdida — a tentar reconectar…"));
-      setTimeout(() => runLiveAudit(root, url, { mock, retriesLeft: retriesLeft - 1 }), 1500);
-      return;
-    }
-    renderErrorCard(root, "A ligação ao servidor foi perdida durante a auditoria.", () => runLiveAudit(root, url, { mock }));
+    // O EventSource do browser tenta reconectar automaticamente, enviando Last-Event-ID -
+    // nunca fechamos nem reiniciamos nada aqui, só avisamos sem perder o que já foi mostrado
+    // (secção B.1: uma ligação a cair e a voltar a ligar-se nunca cancela nem reinicia o job).
+    const banner = logWrap.querySelector("#connection-banner");
+    const message = "Ligação ao servidor instável — a tentar reconectar automaticamente (o progresso da auditoria não se perde)…";
+    if (banner) banner.textContent = message;
+    else logWrap.insertBefore(el("div", { class: "card", id: "connection-banner" }, message), logWrap.firstChild);
   };
+
+  source.addEventListener("open", () => {
+    logWrap.querySelector("#connection-banner")?.remove();
+  });
 }

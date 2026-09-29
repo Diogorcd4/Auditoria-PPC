@@ -1,3 +1,4 @@
+import asyncio
 import json
 import shutil
 
@@ -26,6 +27,15 @@ async def client():
 def history_env(tmp_path, monkeypatch):
     monkeypatch.setattr(server_module, "OUTPUT_DIR", tmp_path)
     return tmp_path
+
+
+@pytest.fixture
+def audit_jobs_env(monkeypatch):
+    """Um registo de jobs limpo por teste - AUDIT_JOBS é global no módulo, e teria estado a
+    escapar entre testes sem isto."""
+    fresh_jobs: dict = {}
+    monkeypatch.setattr(server_module, "AUDIT_JOBS", fresh_jobs)
+    return fresh_jobs
 
 
 @pytest.fixture
@@ -72,18 +82,36 @@ async def test_static_index_html_is_served(client):
     assert "Auditor" in resp.text
 
 
+async def _drain_sse_events(response, *, limit=None):
+    events = []
+    async for line in response.aiter_lines():
+        if line.startswith("data: "):
+            events.append(json.loads(line[len("data: "):]))
+            if limit is not None and len(events) >= limit:
+                break
+    return events
+
+
 @pytest.mark.asyncio
-async def test_stream_audit_emits_sse_events_in_order(monkeypatch, client):
+async def test_start_audit_creates_a_background_job_and_events_replay_via_sse(monkeypatch, client, audit_jobs_env):
     monkeypatch.setattr(server_module, "run_pipeline", _fake_run_pipeline)
     monkeypatch.setattr(server_module, "_get_llm_factory", lambda mock: (lambda task: object()))
 
-    events = []
-    async with client.stream("GET", "/api/audit/stream", params={"url": "example.pt", "mock": "true"}) as response:
+    start_resp = await client.post("/api/audits", json={"url": "example.pt", "mock": True})
+    assert start_resp.status_code == 200
+    job_id = start_resp.json()["id"]
+    assert start_resp.json()["reused"] is False
+
+    # dá tempo à tarefa de fundo para produzir os três eventos antes de nos ligarmos.
+    for _ in range(50):
+        if len(audit_jobs_env[job_id].events) >= 3:
+            break
+        await asyncio.sleep(0.02)
+
+    async with client.stream("GET", f"/api/audits/{job_id}/events") as response:
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/event-stream")
-        async for line in response.aiter_lines():
-            if line.startswith("data: "):
-                events.append(json.loads(line[len("data: "):]))
+        events = await _drain_sse_events(response, limit=3)
 
     assert [e["step"] for e in events] == ["crawl", "crawl", "tracking"]
     assert events[0]["status"] == "running"
@@ -94,7 +122,7 @@ async def test_stream_audit_emits_sse_events_in_order(monkeypatch, client):
 
 
 @pytest.mark.asyncio
-async def test_stream_audit_passes_mock_flag_through_to_get_llm_factory(monkeypatch, client):
+async def test_start_audit_passes_mock_flag_through_to_get_llm_factory(monkeypatch, client, audit_jobs_env):
     seen = {}
 
     def fake_get_llm_factory(mock):
@@ -104,11 +132,134 @@ async def test_stream_audit_passes_mock_flag_through_to_get_llm_factory(monkeypa
     monkeypatch.setattr(server_module, "run_pipeline", _fake_run_pipeline)
     monkeypatch.setattr(server_module, "_get_llm_factory", fake_get_llm_factory)
 
-    async with client.stream("GET", "/api/audit/stream", params={"url": "example.pt", "mock": "true"}) as response:
-        async for _ in response.aiter_lines():
-            pass
+    resp = await client.post("/api/audits", json={"url": "example.pt", "mock": True})
+    job_id = resp.json()["id"]
+    for _ in range(50):
+        if audit_jobs_env[job_id].status != "running":
+            break
+        await asyncio.sleep(0.02)
 
     assert seen["mock"] is True
+
+
+@pytest.mark.asyncio
+async def test_start_audit_reuses_the_running_job_for_the_same_domain(monkeypatch, client, audit_jobs_env):
+    """Secção B.2: um segundo POST /api/audits para o mesmo URL, enquanto o primeiro job
+    ainda está em curso, nunca arranca um segundo job - devolve o id do que já existe."""
+    async def _never_ending_pipeline(config, llm, **kwargs):
+        yield PipelineEvent(step="crawl", status="running")
+        await asyncio.sleep(10)  # nunca chega a correr durante o teste
+
+    monkeypatch.setattr(server_module, "run_pipeline", _never_ending_pipeline)
+    monkeypatch.setattr(server_module, "_get_llm_factory", lambda mock: (lambda task: object()))
+
+    first = await client.post("/api/audits", json={"url": "example.pt", "mock": True})
+    second = await client.post("/api/audits", json={"url": "example.pt", "mock": True})
+
+    assert first.json()["id"] == second.json()["id"]
+    assert first.json()["reused"] is False
+    assert second.json()["reused"] is True
+    assert len(audit_jobs_env) == 1
+
+
+@pytest.mark.asyncio
+async def test_reconnecting_with_last_event_id_only_replays_events_after_it(monkeypatch, client, audit_jobs_env):
+    """Secção B.1: reconectar (Last-Event-ID) nunca repete eventos já recebidos nem reinicia
+    o job - só continua a partir do que falta."""
+    monkeypatch.setattr(server_module, "run_pipeline", _fake_run_pipeline)
+    monkeypatch.setattr(server_module, "_get_llm_factory", lambda mock: (lambda task: object()))
+
+    resp = await client.post("/api/audits", json={"url": "example.pt", "mock": True})
+    job_id = resp.json()["id"]
+    for _ in range(50):
+        if len(audit_jobs_env[job_id].events) >= 3:
+            break
+        await asyncio.sleep(0.02)
+
+    async with client.stream("GET", f"/api/audits/{job_id}/events", headers={"Last-Event-ID": "0"}) as response:
+        events = await _drain_sse_events(response, limit=2)
+
+    # com Last-Event-ID=0 (o primeiro evento), só os dois seguintes devem chegar - nunca de novo o "crawl running".
+    assert [e["step"] for e in events] == ["crawl", "tracking"]
+    assert events[0]["status"] == "done"
+
+
+@pytest.mark.asyncio
+async def test_get_audit_job_returns_full_state_for_reconstructing_the_screen(monkeypatch, client, audit_jobs_env):
+    """Secção B.3: o estado completo de um job (em curso ou já terminado) chega por aqui,
+    sem depender de nenhuma ligação SSE em tempo real."""
+    monkeypatch.setattr(server_module, "run_pipeline", _fake_run_pipeline)
+    monkeypatch.setattr(server_module, "_get_llm_factory", lambda mock: (lambda task: object()))
+
+    resp = await client.post("/api/audits", json={"url": "example.pt", "mock": True})
+    job_id = resp.json()["id"]
+    for _ in range(50):
+        if audit_jobs_env[job_id].status != "running":
+            break
+        await asyncio.sleep(0.02)
+
+    state = await client.get(f"/api/audits/{job_id}")
+    assert state.status_code == 200
+    body = state.json()
+    assert body["id"] == job_id
+    assert body["url"] == "example.pt"
+    assert body["status"] == "done"
+    assert [e["step"] for e in body["events"]] == ["crawl", "crawl", "tracking"]
+
+
+@pytest.mark.asyncio
+async def test_get_audit_job_404s_for_an_unknown_id(client, audit_jobs_env):
+    resp = await client.get("/api/audits/does-not-exist")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_cancel_audit_job_stops_the_background_task(monkeypatch, client, audit_jobs_env):
+    """Secção B.1: só o cancelamento explícito pára o job - nunca desligar-se/reconectar."""
+    started = asyncio.Event()
+
+    async def _never_ending_pipeline(config, llm, **kwargs):
+        yield PipelineEvent(step="crawl", status="running")
+        started.set()
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(server_module, "run_pipeline", _never_ending_pipeline)
+    monkeypatch.setattr(server_module, "_get_llm_factory", lambda mock: (lambda task: object()))
+
+    resp = await client.post("/api/audits", json={"url": "example.pt", "mock": True})
+    job_id = resp.json()["id"]
+    await asyncio.wait_for(started.wait(), timeout=2)
+
+    cancel_resp = await client.post(f"/api/audits/{job_id}/cancel")
+    assert cancel_resp.status_code == 200
+    assert cancel_resp.json()["cancelled"] is True
+
+    for _ in range(50):
+        if audit_jobs_env[job_id].task.done():
+            break
+        await asyncio.sleep(0.02)
+    assert audit_jobs_env[job_id].task.cancelled() or audit_jobs_env[job_id].task.done()
+    assert audit_jobs_env[job_id].status == "cancelled"
+
+
+@pytest.mark.asyncio
+async def test_sse_connection_open_and_close_are_logged(monkeypatch, client, audit_jobs_env, capsys):
+    monkeypatch.setattr(server_module, "run_pipeline", _fake_run_pipeline)
+    monkeypatch.setattr(server_module, "_get_llm_factory", lambda mock: (lambda task: object()))
+
+    resp = await client.post("/api/audits", json={"url": "example.pt", "mock": True})
+    job_id = resp.json()["id"]
+    for _ in range(50):
+        if audit_jobs_env[job_id].status != "running":
+            break
+        await asyncio.sleep(0.02)
+
+    async with client.stream("GET", f"/api/audits/{job_id}/events") as response:
+        await _drain_sse_events(response, limit=3)
+
+    log = capsys.readouterr().out
+    assert f"ligação SSE aberta para o job '{job_id}'" in log
+    assert f"ligação SSE fechada para o job '{job_id}'" in log
 
 
 def _sample_profile():

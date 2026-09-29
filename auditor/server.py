@@ -2,13 +2,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 import traceback
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Optional
 
 from fastapi import Body, FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 from auditor.ads import generate_all_ads
 from auditor.appconfig import GEMINI_BASE_URL, build_llm_client_for_task, load_config, model_for_task, save_config
@@ -17,10 +20,12 @@ from auditor.llm.base import LLMClient
 from auditor.llm.mock import MockLLMClient
 from auditor.pipeline import (
     PipelineConfig,
+    PipelineEvent,
     _format_error,
     _require_model,
     count_ads_assets,
     delete_saved_audit,
+    domain_of,
     load_history,
     load_saved_audit,
     run_pipeline,
@@ -29,6 +34,7 @@ from auditor.prompts import PROMPTS_DIR, TEMPLATE_PLACEHOLDERS, list_template_na
 from auditor.prompts import select_templates_for_profile
 
 SSE_PING_INTERVAL = 15.0
+JOB_POLL_INTERVAL = 0.5
 
 WEB_DIR = Path(__file__).resolve().parents[1] / "web"
 DEMO_FIXTURE_PATH = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "demo_audit.json"
@@ -36,6 +42,75 @@ OUTPUT_DIR = Path(__file__).resolve().parents[1] / "output"
 CACHE_DIR = Path(__file__).resolve().parents[1] / ".cache"
 
 app = FastAPI(title="Auditor")
+
+
+# ---------------------------------------------------------------------------
+# Auditorias em segundo plano (secção B do pedido de correcção)
+#
+# Uma auditoria corre numa tarefa asyncio própria, guardada em AUDIT_JOBS por domínio -
+# nunca ligada ao ciclo de vida de uma ligação HTTP. Fechar o separador, recarregar a
+# página, ou uma ligação SSE cair e voltar a ligar-se, NUNCA cancela nem reinicia o job;
+# só o cancelamento explícito (endpoint /cancel) o faz. Cada evento fica também guardado em
+# `events`, o que permite tanto reconstruir o estado de uma auditoria já terminada como
+# retomar uma ligação SSE a meio (via Last-Event-ID) sem perder nem repetir eventos.
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AuditJob:
+    id: str
+    url: str
+    mock: bool = False
+    fast: bool = False
+    max_pages: int = 25
+    status: str = "running"  # running | done | error | cancelled
+    events: list[dict] = field(default_factory=list)
+    task: Optional["asyncio.Task"] = None
+
+
+AUDIT_JOBS: dict[str, AuditJob] = {}
+
+
+class StartAuditRequest(BaseModel):
+    url: str
+    max_pages: int = 25
+    mock: bool = False
+    fast: bool = False
+
+
+async def _run_audit_job(job: AuditJob) -> None:
+    app_config = load_config()
+    llm_factory = _get_llm_factory(job.mock)
+    pipeline_config = _pipeline_config_from_app_config(job.url, job.max_pages, app_config, fast=job.fast)
+    print(f"[audits] job '{job.id}' iniciado (url={job.url})")
+    try:
+        async for event in run_pipeline(pipeline_config, llm_factory):
+            job.events.append(event.model_dump())
+    except asyncio.CancelledError:
+        job.status = "cancelled"
+        print(f"[audits] job '{job.id}' cancelado")
+        return
+    except Exception as exc:  # noqa: BLE001 - never let a background job vanish silently
+        traceback.print_exc()
+        job.events.append(PipelineEvent(step="pipeline", status="error", error=_format_error(exc)).model_dump())
+        job.status = "error"
+        print(f"[audits] job '{job.id}' terminou com erro: {job.status}")
+        return
+    job.status = "done"
+    print(f"[audits] job '{job.id}' concluído")
+
+
+def _get_or_reuse_audit_job(payload: StartAuditRequest) -> tuple[AuditJob, bool]:
+    job_id = domain_of(payload.url)
+    existing = AUDIT_JOBS.get(job_id)
+    if existing is not None and existing.status == "running":
+        print(f"[audits] pedido para '{payload.url}' reutiliza o job '{job_id}' já em curso")
+        return existing, True
+
+    job = AuditJob(id=job_id, url=payload.url, mock=payload.mock, fast=payload.fast, max_pages=payload.max_pages)
+    AUDIT_JOBS[job_id] = job
+    job.task = asyncio.create_task(_run_audit_job(job))
+    return job, False
 
 
 @app.get("/api/demo")
@@ -89,49 +164,81 @@ def _pipeline_config_from_app_config(url: str, max_pages: int, app_config: dict,
     )
 
 
-@app.get("/api/audit/stream")
-async def stream_audit(request: Request, url: str, max_pages: int = 25, mock: bool = False, fast: bool = False) -> StreamingResponse:
-    """SSE stream of PipelineEvent objects, one per pipeline step transition. The client
-    (EventSource in app.js) stops listening simply by closing the connection - detected here
-    via `request.is_disconnected()` so a cancelled audit doesn't keep running server-side.
+@app.post("/api/audits")
+async def start_audit(payload: StartAuditRequest) -> JSONResponse:
+    """Cria um job de auditoria em segundo plano, ou devolve o id do que já estiver em curso
+    para o mesmo domínio (secção B.2) - nunca corre dois jobs em paralelo para o mesmo site."""
+    job, reused = _get_or_reuse_audit_job(payload)
+    return JSONResponse({"id": job.id, "reused": reused})
 
-    A ": ping" comment line is sent whenever nothing else has happened for
-    SSE_PING_INTERVAL seconds - including while a single slow model call is in flight - so
-    browsers/proxies never decide the connection is dead mid-step (secção C.8). Any exception
-    that escapes run_pipeline itself (e.g. the browser failing to launch, before the per-step
-    try/except even starts) is still turned into one last error event instead of just
-    dropping the connection with no explanation (secção B.7).
-    """
-    app_config = load_config()
-    llm_factory = _get_llm_factory(mock)
-    pipeline_config = _pipeline_config_from_app_config(url, max_pages, app_config, fast=fast)
+
+@app.get("/api/audits/{job_id}/events")
+async def stream_audit_job_events(job_id: str, request: Request) -> StreamingResponse:
+    """SSE do job `job_id`. Nunca cancela nem reinicia o job ao desligar-se (secção B.1): só
+    lê o que já está em `job.events` e vai dormindo até haver mais. O cabeçalho Last-Event-ID
+    (enviado automaticamente pelo EventSource do browser ao reconectar) faz recomeçar exactamente
+    a seguir ao último evento recebido, em vez de repetir tudo desde o início (secção B.1)."""
+    job = AUDIT_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Auditoria não encontrada.")
+
+    last_event_id = request.headers.get("last-event-id")
+    start_index = int(last_event_id) + 1 if last_event_id and last_event_id.isdigit() else 0
+    print(f"[audits] ligação SSE aberta para o job '{job_id}' (a partir do evento {start_index})")
 
     async def event_source():
-        agen = run_pipeline(pipeline_config, llm_factory).__aiter__()
-        while True:
-            if await request.is_disconnected():
-                break
-            try:
-                event = await asyncio.wait_for(agen.__anext__(), timeout=SSE_PING_INTERVAL)
-            except asyncio.TimeoutError:
-                yield ": ping\n\n"
-                continue
-            except StopAsyncIteration:
-                break
-            except Exception as exc:  # noqa: BLE001 - never let the SSE stream just die silently
-                traceback.print_exc()
-                from auditor.pipeline import PipelineEvent
-
-                error_event = PipelineEvent(step="pipeline", status="error", error=_format_error(exc))
-                yield f"data: {error_event.model_dump_json()}\n\n"
-                break
-            yield f"data: {event.model_dump_json()}\n\n"
+        close_reason = "o cliente desligou-se"
+        index = start_index
+        last_activity = time.monotonic()
+        try:
+            while True:
+                if await request.is_disconnected():
+                    return
+                if index < len(job.events):
+                    yield f"id: {index}\ndata: {json.dumps(job.events[index], ensure_ascii=False)}\n\n"
+                    index += 1
+                    last_activity = time.monotonic()
+                    continue
+                if job.status != "running":
+                    close_reason = f"o job terminou (estado: {job.status})"
+                    return
+                if time.monotonic() - last_activity >= SSE_PING_INTERVAL:
+                    yield ": ping\n\n"
+                    last_activity = time.monotonic()
+                else:
+                    await asyncio.sleep(JOB_POLL_INTERVAL)
+        finally:
+            print(f"[audits] ligação SSE fechada para o job '{job_id}' ({close_reason})")
 
     return StreamingResponse(
         event_source(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
+
+
+@app.get("/api/audits/{job_id}")
+def get_audit_job(job_id: str) -> JSONResponse:
+    """Estado completo do job (secção B.3): usado para reconstruir o ecrã de uma auditoria em
+    curso ou já terminada, sem depender de nenhum evento SSE em tempo real."""
+    job = AUDIT_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Auditoria não encontrada.")
+    return JSONResponse({"id": job.id, "url": job.url, "status": job.status, "events": job.events})
+
+
+@app.post("/api/audits/{job_id}/cancel")
+async def cancel_audit_job(job_id: str) -> JSONResponse:
+    """Único caminho que pára um job (secção B.1): fechar o separador, recarregar a página ou
+    a ligação SSE cair nunca chega aqui - só o botão "Cancelar" chama este endpoint."""
+    job = AUDIT_JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Auditoria não encontrada.")
+    if job.task is not None and not job.task.done():
+        job.task.cancel()
+    job.status = "cancelled"
+    print(f"[audits] job '{job_id}' cancelado pelo utilizador")
+    return JSONResponse({"cancelled": True})
 
 
 @app.post("/api/audit/regenerate-ads")
