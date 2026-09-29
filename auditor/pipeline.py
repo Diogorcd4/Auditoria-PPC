@@ -28,7 +28,7 @@ from auditor.profile import extract_profile
 from auditor.prompts import select_templates_for_profile
 from auditor.tracking import detect_tracking, empty_report, merge_reports
 
-STEPS = ["crawl", "tracking", "comunicacao", "sintese", "termos", "perfil", "anuncios", "relatorio"]
+STEPS = ["crawl", "tracking", "comunicacao", "sintese", "perfil", "termos", "anuncios", "relatorio"]
 
 DEFAULT_OWNER_SERVICES = ["Google Ads", "Meta Ads", "Microsoft Advertising", "Tracking e Analytics", "Copy e conversão"]
 
@@ -336,10 +336,14 @@ async def _run_step(
         llm = llm_factory("keywords")
         _require_model(llm, "keywords", model)
         _attach_wait_reporter(llm, step, progress_queue)
+        # O Perfil (setor/produto ou serviço/geografia) já correu antes dos Termos (secção A):
+        # é a fonte primária das sementes, para nunca derivarem de um resumo de página genérico
+        # e acabarem a apontar para um setor errado.
         return await build_keywords(
             llm,
             http_client,
             pages,
+            profile=context.get("perfil"),
             model=model,
             cache_dir=Path(config.cache_dir) / "keywords",
             use_alphabet=config.keyword_use_alphabet,

@@ -508,7 +508,12 @@ table.matrix tbody tr:last-child td { border-bottom: none; }
 }
 .kw-chip--inferred { border-style: dashed; border-color: var(--info); }
 .kw-gaps, .kw-negatives { margin-top: 8px; }
-.kw-negatives .mono-chip { margin: 3px 4px 0 0; display: inline-block; }
+.negative-chip { display: inline-flex; align-items: center; gap: 6px; }
+.negative-chip__copy {
+  border: none; background: none; cursor: pointer; color: var(--muted); font-size: 0.85rem;
+  line-height: 1; padding: 0;
+}
+.negative-chip__copy:hover { color: var(--text); }
 
 /* ---------- opportunities ---------- */
 .opp-card { display: flex; flex-direction: column; gap: 10px; }

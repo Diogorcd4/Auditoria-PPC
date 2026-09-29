@@ -153,7 +153,9 @@ async def test_infer_keywords_synthesis_returns_all_five_stages():
 async def test_build_keywords_end_to_end_labels_observed_terms_with_a_stage(tmp_path):
     def handler(request: httpx.Request) -> httpx.Response:
         query = request.url.params.get("q")
-        return httpx.Response(200, json=[query, ["dentista perto de mim"]])
+        # partilha "sorriso" com a semente "clínica sorriso" - passa o filtro de relevância
+        # da secção A.4 (só ficam os termos observados com uma palavra em comum com a semente).
+        return httpx.Response(200, json=[query, ["sorriso perto de mim"]])
 
     llm = MockLLMClient(fixtures=FIXTURES)
     pages = [_page("home", "home", title="Clínica Sorriso", h1=["Clínica Sorriso"])]
@@ -161,7 +163,7 @@ async def test_build_keywords_end_to_end_labels_observed_terms_with_a_stage(tmp_
     async with httpx.AsyncClient(transport=_mock_transport(handler)) as client:
         result = await build_keywords(llm, client, pages, cache_dir=tmp_path, use_alphabet=False)
 
-    assert result["observed"][0]["term"] == "dentista perto de mim"
+    assert result["observed"][0]["term"] == "sorriso perto de mim"
     assert result["observed"][0]["stage"] == "transacional_local"
     assert result["inferred"]["decisao"] == ["marcar consulta avaliação gratuita"]
     assert result["negatives"]

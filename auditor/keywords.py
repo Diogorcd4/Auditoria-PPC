@@ -36,6 +36,45 @@ STAGE_KEYWORDS = {
     "problema": ["o que é", "porque", "como", "sintomas", "problema", "dói"],
 }
 
+# Palavras vazias em PT-PT, ignoradas ao comparar se uma semente/termo "tem a ver" com o site
+# (secção A.3): sem isto, qualquer termo com "de"/"para" passaria o teste de relevância.
+STOPWORDS_PT = {
+    "a", "o", "as", "os", "de", "da", "do", "das", "dos", "e", "em", "para", "com", "por",
+    "na", "no", "nas", "nos", "um", "uma", "uns", "umas", "que", "como", "mais", "menos",
+    "ao", "aos", "à", "às", "se", "sua", "seu", "suas", "seus", "sem", "sobre", "entre",
+}
+
+# Cidades/países/siglas de outros mercados que às vezes aparecem no Autocomplete quando o
+# Google interpreta a semente para um mercado errado (secção A.4). Não é uma lista exaustiva -
+# só cobre os casos concretos relatados (Espanha, Brasil, LatAm, Angola).
+OFF_MARKET_TERMS = {
+    "madrid", "barcelona", "sevilla", "valencia", "bilbao", "espanha", "espana", "españa",
+    "rj", "sp", "porto alegre", "curitiba", "manaus", "sao paulo", "são paulo", "rio de janeiro",
+    "belo horizonte", "brasilia", "brasília", "salvador", "fortaleza", "recife", "lima", "peru",
+    "mexico", "méxico", "bogota", "bogotá", "colombia", "colômbia", "angola", "luanda",
+    "cnae", "sebrae", "ltda", "reclame aqui",
+}
+# Palavras claramente em espanhol (não em PT-PT) que às vezes aparecem misturadas no
+# Autocomplete quando o Google devolve resultados de outro país de língua próxima.
+SPANISH_WORDS = {"camiones", "camión", "envios", "envíos", "precio", "cuanto cuesta", "gratis"}
+NOISE_TERMS = {
+    "curso", "cursos", "vagas", "vaga", "emprego", "empregos", "estágio", "estagio", "estágios",
+    "salário", "salario", "salários", "salarios", "pdf", "grátis", "gratis", "reclame aqui",
+    "reclameaqui", "trabalhe conosco", "trabalhe connosco",
+}
+
+
+def _compile_term_boundary_re(terms: set[str]) -> "re.Pattern[str]":
+    """Compara por palavra/frase inteira, nunca por substring nua - "sp" (São Paulo) não pode
+    apanhar "tranSPorte", nem "rj" apanhar qualquer palavra que o contenha por acaso."""
+    escaped = sorted((re.escape(t) for t in terms), key=len, reverse=True)
+    return re.compile(r"\b(?:" + "|".join(escaped) + r")\b", re.IGNORECASE)
+
+
+OFF_MARKET_RE = _compile_term_boundary_re(OFF_MARKET_TERMS)
+SPANISH_WORDS_RE = _compile_term_boundary_re(SPANISH_WORDS)
+NOISE_TERMS_RE = _compile_term_boundary_re(NOISE_TERMS)
+
 NOTE_TEXT = (
     "Sem dados de volume de pesquisa nesta auditoria; validar as prioridades no Keyword "
     "Planner antes de orçamentar campanhas."
@@ -68,10 +107,70 @@ def _clean_seed(text: Optional[str]) -> Optional[str]:
     return cleaned
 
 
-def derive_seed_terms(pages: list[PageData], *, max_seeds: int = 8) -> list[str]:
-    """Fallback heurístico, só usado quando infer_seed_terms (via IA) falha ou não devolve
-    nada (secção 8): H1s e o primeiro segmento do título de cada página, filtrados por
-    _clean_seed para nunca incluir frases inteiras/slogans nem rótulos de navegação."""
+WORD_RE = re.compile(r"[a-zà-öø-ÿ]+", re.IGNORECASE)
+
+
+def _significant_words(text: str) -> set[str]:
+    """Palavras de 3+ letras, sem pontuação e sem stopwords - usadas só para comparar se uma
+    semente/termo tem alguma relação com o site (secção A.3), nunca para gerar texto."""
+    if not text:
+        return set()
+    words = WORD_RE.findall(text.lower())
+    return {w for w in words if len(w) > 2 and w not in STOPWORDS_PT}
+
+
+def _profile_field_value(profile: Optional[dict], key: str) -> str:
+    if not profile:
+        return ""
+    field = profile.get(key)
+    if isinstance(field, dict):
+        return field.get("value") or ""
+    return ""
+
+
+def _split_profile_value(value: str) -> list[str]:
+    """"Transportes e logística, mudanças" -> ["transportes", "logística", "mudanças"]:
+    o Perfil guarda frases, não termos de pesquisa - isto separa-as nos fragmentos que
+    _clean_seed depois filtra para 2 a 4 palavras (secção A.2)."""
+    return [part for part in re.split(r",|;|\be\b|/", value) if part.strip()]
+
+
+def _seed_reference_words(pages: list[PageData]) -> set[str]:
+    """O vocabulário do próprio site (títulos, H1, meta descrições) - nunca o do Perfil, para
+    esta verificação não ser circular (validar uma semente vinda de profile.sector contra as
+    palavras desse mesmo profile.sector aceitaria sempre, por definição). É contra ISTO que
+    cada semente derivada do Perfil é confrontada (secção A.3)."""
+    words: set[str] = set()
+    for page in pages:
+        words |= _significant_words(page.title)
+        words |= _significant_words(page.meta_description)
+        for h1 in page.h1:
+            words |= _significant_words(h1)
+    return words
+
+
+def _seed_shares_a_significant_word(seed: str, reference_words: set[str]) -> bool:
+    return bool(_significant_words(seed) & reference_words) if reference_words else True
+
+
+def derive_seed_terms_from_profile(profile: dict, *, max_seeds: int = 8) -> list[str]:
+    """Fonte primária das sementes (secção A.2): só o setor e o produto/serviço extraídos no
+    Perfil - nunca owner_services (que é sobre os serviços que o Auditor vende, não sobre o
+    negócio auditado) nem um resumo genérico de página."""
+    candidates: "OrderedDict[str, None]" = OrderedDict()
+    for key in ("produto_ou_servico", "sector"):
+        for fragment in _split_profile_value(_profile_field_value(profile, key)):
+            cleaned = _clean_seed(fragment)
+            if cleaned:
+                candidates.setdefault(cleaned, None)
+    return list(candidates.keys())[:max_seeds]
+
+
+def _derive_seed_terms_from_titles(pages: list[PageData], *, max_seeds: int = 8) -> list[str]:
+    """Fallback heurístico (secção A.3): só entra em acção quando o Perfil não existe, ou
+    quando sobram menos de 3 sementes válidas vindas dele. H1s e o primeiro segmento do
+    título de cada página, filtrados por _clean_seed para nunca incluir frases
+    inteiras/slogans nem rótulos de navegação."""
     candidates: "OrderedDict[str, None]" = OrderedDict()
 
     home = next((p for p in pages if p.type == "home"), pages[0] if pages else None)
@@ -94,6 +193,39 @@ def derive_seed_terms(pages: list[PageData], *, max_seeds: int = 8) -> list[str]
                 candidates.setdefault(cleaned, None)
 
     return list(candidates.keys())[:max_seeds]
+
+
+def derive_seed_terms(pages: list[PageData], *, profile: Optional[dict] = None, max_seeds: int = 8) -> list[str]:
+    """Termos-semente: só podem derivar do Perfil (setor, produto ou serviço) e, como
+    fallback, dos títulos/H1 de páginas de serviço/produto do site - nunca de owner_services
+    nem de exemplos de outro setor (secção A do pedido de correcção). Cada candidato é
+    validado contra o vocabulário do próprio site/Perfil (_seed_shares_a_significant_word);
+    os que não partilham nenhuma palavra significativa são descartados e registados no
+    terminal, nunca devolvidos como sementes."""
+    reference_words = _seed_reference_words(pages)
+
+    def _accept(cleaned: str) -> bool:
+        if _seed_shares_a_significant_word(cleaned, reference_words):
+            return True
+        print(f"[termos] semente descartada (sem relação aparente com o site): '{cleaned}'")
+        return False
+
+    seeds: "OrderedDict[str, None]" = OrderedDict()
+    if profile:
+        for cleaned in derive_seed_terms_from_profile(profile, max_seeds=max_seeds):
+            if _accept(cleaned):
+                seeds.setdefault(cleaned, None)
+
+    if len(seeds) < 3:
+        for cleaned in _derive_seed_terms_from_titles(pages, max_seeds=max_seeds):
+            if cleaned in seeds:
+                continue
+            if _accept(cleaned):
+                seeds.setdefault(cleaned, None)
+            if len(seeds) >= max_seeds:
+                break
+
+    return list(seeds.keys())[:max_seeds]
 
 
 async def fetch_autocomplete(client: httpx.AsyncClient, query: str, *, hl: str = "pt-PT", gl: str = "pt", timeout: float = 10.0) -> list[str]:
@@ -151,6 +283,51 @@ async def fetch_observed_terms(
     return list(results.keys())
 
 
+OBSERVED_TERMS_CAP = 60
+
+
+def _is_off_topic_observed_term(term: str, seed_words: set[str]) -> bool:
+    """Um termo observado só é aceite se tocar noutro mercado/idioma/ruído, ou se não tiver
+    nenhuma palavra em comum com nenhuma semente (secção A.4 do pedido de correcção)."""
+    if OFF_MARKET_RE.search(term) or SPANISH_WORDS_RE.search(term) or NOISE_TERMS_RE.search(term):
+        return True
+    return not (_significant_words(term) & seed_words)
+
+
+def filter_observed_terms(terms: list[str], seeds: list[str], *, cap: int = OBSERVED_TERMS_CAP) -> list[str]:
+    """Filtra termos observados de outros mercados (cidades/países fora de Portugal, siglas
+    brasileiras), espanhol e ruído genérico (curso, vagas, emprego...), mantendo só os que
+    partilham uma palavra com alguma semente, até um máximo de `cap` (secção A.4). Regista no
+    terminal quantos foram descartados."""
+    seed_words: set[str] = set()
+    for seed in seeds:
+        seed_words |= _significant_words(seed)
+
+    kept: list[str] = []
+    discarded = 0
+    for term in terms:
+        if _is_off_topic_observed_term(term, seed_words) or len(kept) >= cap:
+            discarded += 1
+            continue
+        kept.append(term)
+
+    print(f"[termos] {len(kept)} termos observados mantidos, {discarded} descartados (outro mercado/idioma/ruído ou limite de {cap}).")
+    return kept
+
+
+def _clean_negative_keywords(raw: list[str]) -> list[str]:
+    """Cada palavra-chave negativa tem de ser um chip separado (secção A.5): se o modelo
+    devolver vários termos colados num único item (por vírgula, ponto e vírgula ou barra),
+    isto separa-os antes de chegarem à interface."""
+    cleaned: "OrderedDict[str, None]" = OrderedDict()
+    for item in raw:
+        for fragment in re.split(r"[,;|/]+", item):
+            term = fragment.strip().lower()
+            if term:
+                cleaned.setdefault(term, None)
+    return list(cleaned.keys())
+
+
 class InferredKeywords(BaseModel):
     problema: list[str] = Field(default_factory=list)
     solucao: list[str] = Field(default_factory=list)
@@ -175,42 +352,15 @@ def _synthesis_system_prompt() -> str:
         "2) identificar lacunas de conteúdo: temas relevantes para este negócio que não têm "
         "nenhuma página correspondente no site; 3) sugerir palavras-chave negativas para excluir "
         "de campanhas de Google Ads (termos que atraem cliques não qualificados, como 'grátis', "
-        "'emprego', 'curso', 'estágio', quando não fizerem sentido para este negócio). "
+        "'emprego', 'curso', 'estágio', quando não fizerem sentido para este negócio). Cada "
+        "palavra-chave negativa é UM item separado da lista - nunca coloques várias palavras "
+        "coladas ou separadas por vírgula dentro do mesmo item. "
         + PT_PT_INSTRUCTION
     )
 
 
 def _pages_summary(pages: list[PageData]) -> str:
     return "\n".join(f"- {p.type}: {p.title or p.url}" for p in pages)
-
-
-class SeedTerms(BaseModel):
-    seeds: list[str] = Field(default_factory=list)
-
-
-def _seed_system_prompt() -> str:
-    return (
-        "És um especialista em SEO e Google Ads. A partir de um resumo das páginas de um site, "
-        "sugere entre 5 e 8 termos-semente de pesquisa para este negócio. Cada termo tem de ser "
-        "uma frase curta de pesquisa, com 2 a 4 palavras, sem pontuação final. Nunca uses uma "
-        "frase completa, um slogan, um título/headline inteiro, nem um rótulo de menu de "
-        "navegação isolado (por exemplo, nunca 'início', 'serviços', 'sobre nós', 'contacto' ou "
-        "'blog' sozinhos). Pensa em como um cliente pesquisaria no Google para encontrar este "
-        "tipo de negócio. " + PT_PT_INSTRUCTION
-    )
-
-
-async def infer_seed_terms(llm: LLMClient, pages: list[PageData], *, model: str = "") -> list[str]:
-    """Pede ao modelo 5 a 8 termos-semente a partir do resumo do site (secção 8): é a fonte
-    primária de sementes, mais fiável do que a heurística de H1s/títulos (que pode acabar por
-    usar slogans inteiros ou rótulos de navegação). derive_seed_terms só entra em acção se
-    isto falhar ou devolver uma lista vazia."""
-    prompt = (
-        f"{wrap_site_content(_pages_summary(pages))}\n\n"
-        "Devolve APENAS um objecto JSON com o campo: seeds (lista de 5 a 8 termos-semente)."
-    )
-    result = await generate_json(llm, task="keywords", system=_seed_system_prompt(), prompt=prompt, schema_model=SeedTerms, model=model)
-    return result.seeds
 
 
 async def infer_keywords_synthesis(
@@ -240,6 +390,7 @@ async def build_keywords(
     http_client: httpx.AsyncClient,
     pages: list[PageData],
     *,
+    profile: Optional[dict] = None,
     city: Optional[str] = None,
     model: str = "",
     cache_dir: Path | str = ".cache/keywords",
@@ -249,24 +400,22 @@ async def build_keywords(
 ) -> dict:
     """The observed (Google Autocomplete) and inferred (LLM) layers fail independently
     (secção B.6): a blocked/slow Autocomplete never takes down the inferred layer and
-    vice-versa. The whole step only raises if BOTH layers come back empty."""
-    seeds: list[str] = []
-    try:
-        raw_seeds = await infer_seed_terms(llm, pages, model=model)
-        seeds = list(OrderedDict.fromkeys(cleaned for s in raw_seeds if (cleaned := _clean_seed(s))))
-    except Exception as exc:  # noqa: BLE001 - falls back to the H1/title heuristic below
-        print(f"[termos] não foi possível inferir sementes com IA, a usar heurística de H1/título: {exc}")
-    if not seeds:
-        seeds = derive_seed_terms(pages)
+    vice-versa. The whole step only raises if BOTH layers come back empty.
+
+    `profile` (o resultado já validado do passo "perfil", que corre antes deste) é a fonte
+    primária das sementes - nunca um resumo genérico de página, que é fácil demais de um
+    modelo pequeno hallucinate para um setor completamente errado (secção A)."""
+    seeds = derive_seed_terms(pages, profile=profile)
     print(f"[termos] sementes: {seeds}")
 
     raw_observed: list[str] = []
     observed_warning: Optional[str] = None
     try:
-        raw_observed = await asyncio.wait_for(
+        fetched = await asyncio.wait_for(
             fetch_observed_terms(http_client, seeds, city=city, cache_dir=cache_dir, use_alphabet=use_alphabet, delay_seconds=delay_seconds),
             timeout=overall_timeout,
         )
+        raw_observed = filter_observed_terms(fetched, seeds)
         print(f"[termos] {len(raw_observed)} termos observados (Google Autocomplete).")
     except asyncio.TimeoutError:
         observed_warning = f"A pesquisa de termos observados excedeu {overall_timeout:.0f}s e foi interrompida; a continuar só com termos inferidos."
@@ -284,7 +433,7 @@ async def build_keywords(
         synthesis = await infer_keywords_synthesis(llm, seeds=seeds, observed=raw_observed, pages=pages, model=model)
         inferred = synthesis.inferred.model_dump()
         gaps = synthesis.gaps
-        negatives = synthesis.negatives
+        negatives = _clean_negative_keywords(synthesis.negatives)
         print("[termos] síntese concluída.")
     except Exception as exc:  # noqa: BLE001 - fall back to the observed layer alone
         inferred_warning = f"Não foi possível agrupar os termos com IA: {exc}"

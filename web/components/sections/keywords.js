@@ -1,4 +1,4 @@
-import { el } from "../utils.js";
+import { copyToClipboard, el, showToast } from "../utils.js";
 
 const STAGE_LABEL = { problema: "Problema", solucao: "Solução", comparacao: "Comparação", decisao: "Decisão", transacional_local: "Transacional / Local" };
 
@@ -68,10 +68,23 @@ export function renderKeywords(audit) {
   }
 
   if (kw.negatives?.length) {
+    const negativeChip = (term) => {
+      const copyBtn = el("button", { class: "negative-chip__copy", title: "Copiar" }, "⧉");
+      copyBtn.addEventListener("click", async (event) => {
+        event.stopPropagation();
+        (await copyToClipboard(term)) && showToast(`"${term}" copiado.`);
+      });
+      return el("span", { class: "mono-chip negative-chip" }, [term, copyBtn]);
+    };
+    const copyAllBtn = el("button", { class: "btn btn--ghost btn--sm", style: "margin-top:10px" }, "Copiar tudo");
+    copyAllBtn.addEventListener("click", async () => {
+      (await copyToClipboard(kw.negatives.join(", "))) && showToast("Palavras-chave negativas copiadas.");
+    });
     section.appendChild(
       el("div", { class: "card kw-negatives", style: "margin-top:16px" }, [
         el("h3", { style: "font-size:0.9rem;margin-bottom:10px" }, "Palavras-chave negativas sugeridas"),
-        el("div", {}, kw.negatives.map((n) => el("span", { class: "mono-chip" }, n))),
+        el("div", { class: "kw-chips" }, kw.negatives.map(negativeChip)),
+        copyAllBtn,
       ])
     );
   }
