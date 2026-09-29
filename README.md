@@ -91,7 +91,7 @@ python -m auditor audit <url> [opções]
 | Opção | Efeito |
 |---|---|
 | `--max-pages N` | Limite de páginas a rastrear (por omissão, 25) |
-| `--only crawl,tracking` | Corre só os passos indicados do pipeline (`crawl`, `tracking`, `comunicacao`, `sintese`, `termos`, `perfil`, `anuncios`, `relatorio`) |
+| `--only crawl,tracking` | Corre só os passos indicados do pipeline (`crawl`, `tracking`, `comunicacao`, `sintese`, `perfil`, `termos`, `anuncios`, `relatorio`) |
 | `--dry-run` | Mostra o que seria feito, sem executar nada |
 | `--resume` | Retoma a auditoria mais recente por concluir para este domínio, sem repetir os passos já feitos |
 | `--mock` | Usa dados fictícios em vez do Ollama (útil para testar sem esperar por um modelo local) |
@@ -101,20 +101,36 @@ python -m auditor audit <url> [opções]
 
 - **Estrutura do site**: rastreia até ao limite configurado, classifica cada página (home,
   serviço, produto, preços, sobre, contacto, FAQ, blog, landing...) e extrai o conteúdo
-  relevante de cada uma.
+  relevante de cada uma. Páginas noutra língua (`/en/`, `/fr/`, `/de/`...) são ignoradas
+  quando existe o equivalente na língua principal do site (`crawl.languages`, por defeito
+  `["pt"]`); páginas legais, notícias/artigos datados e arquivos de blog/newsletter nunca
+  entram na análise de Comunicação. Sem `--fast`, no máximo `crawl.max_analyzed_pages`
+  (por defeito 12) páginas são analisadas, priorizando home/serviços/produtos/sobre/contacto.
 - **Tracking instalado**: deteta Google Analytics 4, Universal Analytics, Google Tag
   Manager, Google Ads, Meta Pixel, Microsoft Advertising (UET), Consent Mode v2 e a CMP de
-  cookies usada — sempre com evidência, nunca a adivinhar. Os pedidos de conversão são
-  sempre abortados antes de saírem do browser, para nunca poluir as contas reais do site
-  auditado.
+  cookies usada — sempre com evidência, nunca a adivinhar, incluindo se o banner de
+  consentimento foi encontrado e se o clique em "Aceitar" teve efeito visível. Os pedidos de
+  conversão são sempre abortados antes de saírem do browser, para nunca poluir as contas
+  reais do site auditado.
 - **Comunicação por página**: compara cada página com 7 categorias (Problemas,
   Características, Motivos para comprar, Objecções e receios, Desejos, Crenças e
-  mentalidade, Oportunidades), com evidência e recomendação por categoria.
-- **Termos de pesquisa**: observados (Google Autocomplete) e inferidos (agrupados por IA em
-  etapas de intenção), com lacunas de conteúdo e negativas sugeridas.
+  mentalidade, Oportunidades), com evidência e recomendação por categoria. A pontuação final
+  é a média só das páginas de conversão (home, serviços, produtos, landing, preços,
+  contacto).
+- **Termos de pesquisa**: derivados do Perfil (setor, produto ou serviço) - nunca de um
+  setor errado - com observados (Google Autocomplete, filtrados de outros mercados/ruído) e
+  inferidos (agrupados por IA em etapas de intenção), lacunas de conteúdo e negativas
+  sugeridas.
 - **Anúncios**: os 7 templates de Google Search, Performance Max e Meta Ads, preenchidos
-  automaticamente a partir do perfil extraído do site, gerados em lotes e validados contra
-  os limites de caracteres de cada plataforma, com rondas de correção automáticas.
+  automaticamente a partir do perfil extraído do site e das "ofertas verificadas" (promessas,
+  números e CTAs literais do site, cada um com URL e citação) - qualquer superlativo ou
+  promessa fora dessa lista é marcado como "não verificado no site". Gerados em lotes e
+  validados contra os limites de caracteres de cada plataforma, com rondas de correção
+  automáticas; sitelinks são validados contra as páginas realmente rastreadas.
+
+Uma auditoria corre num job em segundo plano no servidor: fechar o separador, recarregar a
+página ou a ligação cair e voltar a ligar-se nunca a cancela nem a reinicia - só o botão
+"Cancelar" o faz.
 
 Tudo fica guardado em `output/<domínio>/<auditoria>/`, incluindo os prompts efetivamente
 enviados ao modelo (`prompts_preenchidos/`) e o relatório final (`audit.json`).
@@ -147,8 +163,10 @@ usar um modelo mais pequeno nas Definições, ou correr a auditoria com `--only`
 só os passos que lhe interessam de cada vez.
 
 **Uma auditoria foi interrompida a meio**
-Volte a abrir a mesma URL — a interface liga-se de novo ao mesmo progresso, sem repetir os
-passos já concluídos. Na linha de comandos, use `--resume`.
+Fechar o separador ou perder a ligação nunca cancela a auditoria - continua a correr no
+servidor. Volte a abrir a mesma URL e a interface reconstrói todo o progresso desde o
+início do job, sem repetir nenhum passo já concluído. Só o botão "Cancelar" pára mesmo a
+auditoria. Na linha de comandos, use `--resume`.
 
 **Quero recomeçar uma auditoria do zero**
 Apague a pasta correspondente em `output/<domínio>/` (ou a pasta `output/` inteira, para

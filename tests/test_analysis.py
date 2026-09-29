@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from auditor.analysis import (
@@ -8,9 +10,30 @@ from auditor.analysis import (
     synthesize_site,
 )
 from auditor.crawler import PageData
+from auditor.llm.base import LLMClient, LLMResponse
 from auditor.llm.mock import MockLLMClient
 
 FIXTURES = {"analise": "analysis_page.json", "sintese": "site_synthesis.json"}
+
+
+class _ScriptedLLMClient(LLMClient):
+    """Queues one canned JSON response per call to the "sintese" task, in order - lets a test
+    control exactly what synthesize_site's initial call and each top-up call see."""
+
+    def __init__(self, responses: list[str]):
+        self.responses = list(responses)
+        self.call_count = 0
+
+    async def generate(self, *, system, prompt, model="", json_schema=None, temperature=0.2):
+        self.call_count += 1
+        content = self.responses.pop(0) if self.responses else "{}"
+        return LLMResponse(content=content, model="scripted", backend="scripted")
+
+    async def list_models(self):
+        return ["scripted"]
+
+    async def health_check(self):
+        return True
 
 
 def _page(page_id="home", page_type="home") -> PageData:
@@ -127,3 +150,60 @@ async def test_analyze_communication_runs_full_step_and_returns_score():
     assert len(communications) == 2
     assert isinstance(score, int)
     assert 0 <= score <= 100
+
+
+# ---------------------------------------------------------------------------
+# O top 10 de melhorias devolve sempre 10 (secção F.1 do pedido de correcção)
+# ---------------------------------------------------------------------------
+
+
+def _improvement(title: str) -> dict:
+    return {"title": title, "impact": "alto", "effort": "baixo", "page": "home"}
+
+
+@pytest.mark.asyncio
+async def test_synthesize_site_tops_up_top_improvements_to_exactly_ten():
+    initial = json.dumps({"insights": {}, "top_improvements": [_improvement(t) for t in "ABCD"]})
+    # inclui um duplicado ("A") de propósito - tem de ser filtrado, nunca contado a dobrar.
+    followup_1 = json.dumps({"items": [_improvement(t) for t in "AEFG"]})
+    followup_2 = json.dumps({"items": [_improvement(t) for t in "HIJ"]})
+
+    llm = _ScriptedLLMClient([initial, followup_1, followup_2])
+    pages = [_page("home", "home")]
+    from auditor.analysis import CategoryAnalysis, CTAAnalysis, PageCommunication
+
+    comm = PageCommunication(
+        page_id="home",
+        categories={k: CategoryAnalysis(level="forte", evidence="e", recommendation="r") for k in CATEGORY_KEYS},
+        cta_analysis=CTAAnalysis(clarity="forte", position="topo", note="n"),
+    )
+
+    synthesis = await synthesize_site(llm, pages, [comm])
+
+    assert len(synthesis.top_improvements) == 10
+    titles = [t.title for t in synthesis.top_improvements]
+    assert len(set(titles)) == 10  # nenhum duplicado
+    assert llm.call_count == 3  # 1 chamada inicial + 2 de reforço
+
+
+@pytest.mark.asyncio
+async def test_synthesize_site_stops_topping_up_once_the_model_stops_offering_anything_new():
+    initial = json.dumps({"insights": {}, "top_improvements": [_improvement(t) for t in "ABCD"]})
+    only_duplicates = json.dumps({"items": [_improvement(t) for t in "ABCD"]})  # nada de novo
+
+    llm = _ScriptedLLMClient([initial, only_duplicates, only_duplicates, only_duplicates])
+    pages = [_page("home", "home")]
+    from auditor.analysis import CategoryAnalysis, CTAAnalysis, PageCommunication
+
+    comm = PageCommunication(
+        page_id="home",
+        categories={k: CategoryAnalysis(level="forte", evidence="e", recommendation="r") for k in CATEGORY_KEYS},
+        cta_analysis=CTAAnalysis(clarity="forte", position="topo", note="n"),
+    )
+
+    synthesis = await synthesize_site(llm, pages, [comm])
+
+    # nunca inventa nada e nunca fica pendurado a tentar para sempre - pára logo na primeira
+    # tentativa de reforço sem nada de novo, em vez de gastar as MAX_TOP_IMPROVEMENTS_ATTEMPTS.
+    assert len(synthesis.top_improvements) == 4
+    assert llm.call_count == 2

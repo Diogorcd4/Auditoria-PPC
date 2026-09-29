@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from auditor.crawler import PageData
 from auditor.llm.base import LLMClient
-from auditor.llm_json import PT_PT_INSTRUCTION, generate_json, wrap_site_content
+from auditor.llm_json import PT_PT_INSTRUCTION, LLMJsonError, generate_json, wrap_site_content
 
 CATEGORY_KEYS = [
     "problemas",
@@ -85,6 +85,14 @@ class SiteSynthesis(BaseModel):
     strengths: list[str] = Field(default_factory=list)
     weaknesses: list[str] = Field(default_factory=list)
     top_opportunities: list[str] = Field(default_factory=list)
+
+
+class TopImprovementsBatch(BaseModel):
+    items: list[TopImprovement] = Field(default_factory=list)
+
+
+TOP_IMPROVEMENTS_TARGET = 10
+MAX_TOP_IMPROVEMENTS_ATTEMPTS = 3
 
 
 def _system_prompt_for_page(page_type: str) -> str:
@@ -199,7 +207,7 @@ async def synthesize_site(
         "com os campos: insights (objecto com uma chave por categoria - "
         f"{', '.join(CATEGORY_KEYS)} - cada uma uma lista de objectos {{text, source_page}}), "
         "global_gaps (lista de strings), message_inconsistencies (lista de strings), "
-        "top_improvements (lista de até 10 objectos com title, impact, effort, page), "
+        "top_improvements (lista de EXACTAMENTE 10 objectos com title, impact, effort, page), "
         "strengths (lista de até 3 strings), weaknesses (lista de até 3 strings), "
         "top_opportunities (lista de até 3 strings)."
     )
@@ -209,6 +217,33 @@ async def synthesize_site(
     # let a broken reference reach the report.
     result.insights = {key: [item for item in items if item.source_page in page_ids] for key, items in result.insights.items()}
     result.top_improvements = [t for t in result.top_improvements if t.page in page_ids]
+
+    # O top 10 devolve sempre 10 (secção F.1 do pedido de correcção): se um modelo pequeno
+    # devolveu menos (ou perdeu itens ao filtrar referências de página inválidas), pede só as
+    # que faltam, nunca repetindo os títulos já aceites.
+    for _ in range(MAX_TOP_IMPROVEMENTS_ATTEMPTS):
+        missing = TOP_IMPROVEMENTS_TARGET - len(result.top_improvements)
+        if missing <= 0:
+            break
+        existing_titles = [t.title for t in result.top_improvements]
+        followup_prompt = (
+            f"{wrap_site_content(_synthesis_content_block(pages, communications))}\n\n"
+            f"Já foram aceites estas melhorias: {existing_titles or 'nenhuma ainda'}. Faltam "
+            f"{missing} para completar o top {TOP_IMPROVEMENTS_TARGET}. Os IDs de página "
+            f"válidos são: {', '.join(sorted(page_ids))}. Devolve APENAS um objecto JSON "
+            f'{{"items": [...]}} com exactamente {missing} melhorias NOVAS (title, impact, '
+            "effort, page) - nunca repitas nenhuma das já aceites."
+        )
+        try:
+            extra = await generate_json(llm, task="sintese", system=_synthesis_system_prompt(), prompt=followup_prompt, schema_model=TopImprovementsBatch, model=model)
+        except LLMJsonError:
+            break
+        new_items = [t for t in extra.items if t.page in page_ids and t.title not in existing_titles]
+        if not new_items:
+            break
+        result.top_improvements.extend(new_items[:missing])
+
+    result.top_improvements = result.top_improvements[:TOP_IMPROVEMENTS_TARGET]
     return result
 
 
