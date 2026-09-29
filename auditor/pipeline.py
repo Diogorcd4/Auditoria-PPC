@@ -19,7 +19,7 @@ from auditor.ads import MAX_CORRECTION_ROUNDS, generate_all_ads
 from auditor.analysis import PageCommunication, compute_communication_score, synthesize_site
 from auditor.analysis import analyze_page as _analyze_page
 from auditor.browser import launch_browser
-from auditor.crawler import PageData, crawl_site
+from auditor.crawler import CONVERSION_PAGE_TYPES, PageData, crawl_site, select_pages_for_analysis
 from auditor.keywords import build_keywords
 from auditor.llm.base import LLMClient
 from auditor.llm.openai_compat import OpenAICompatClient
@@ -92,6 +92,8 @@ class PipelineConfig:
     max_pages: int = 25
     delay_seconds: float = 1.5
     respect_robots: bool = True
+    languages: list[str] = field(default_factory=lambda: ["pt"])
+    max_analyzed_pages: int = 12
     tracking_pages: int = 4
     keyword_delay_seconds: float = 0.3
     keyword_use_alphabet: bool = True
@@ -274,6 +276,7 @@ async def _run_step(
             cache_dir=config.cache_dir,
             browser=browser,
             fast=config.fast,
+            languages=config.languages,
         )
         return result.model_dump()
 
@@ -297,11 +300,12 @@ async def _run_step(
         llm = llm_factory("analise")
         _require_model(llm, "analise", model)
         _attach_wait_reporter(llm, step, progress_queue)
-        # Páginas legais (privacidade, cookies, termos e condições) nunca têm nada a dizer
-        # sobre problemas/desejos/CTA de um negócio - analisá-las só dilui a Comunicação com
-        # ruído (secção 9). Se por algum motivo só existirem páginas legais, analisa-as de
-        # qualquer forma em vez de falhar o passo inteiro sem nenhuma página.
-        analysis_pages = [p for p in pages if p.type != "legal"] or pages
+        # Páginas legais, notícias/artigos datados e arquivos de blog/newsletter nunca têm nada
+        # a dizer sobre problemas/desejos/CTA de um negócio - analisá-las só dilui a
+        # Comunicação com ruído (secção D.2). Também deduplica por título+conteúdo e cobra o
+        # limite de páginas analisadas fora do modo --fast (secção D.3).
+        max_analyzed = config.max_pages if config.fast else config.max_analyzed_pages
+        analysis_pages = select_pages_for_analysis(pages, max_analyzed_pages=max_analyzed)
         total = len(analysis_pages)
         communications: list[PageCommunication] = []
         failed_pages: list[dict] = []
@@ -340,7 +344,11 @@ async def _run_step(
         analyzed_ids = {c.page_id for c in communications}
         analyzed_pages = [p for p in pages if p.id in analyzed_ids] or pages
         synthesis = await synthesize_site(llm, analyzed_pages, communications, model=model)
-        score = compute_communication_score(communications)
+        # A pontuação é a média das páginas de conversão, não de todas (secção D.3): uma FAQ
+        # ou uma página "sobre" fraca não deve arrastar para baixo a pontuação de um site cujas
+        # páginas de venda (home/serviços/produtos/preços/contacto) estão fortes.
+        conversion_ids = {p.id for p in analyzed_pages if p.type in CONVERSION_PAGE_TYPES}
+        score = compute_communication_score(communications, conversion_page_ids=conversion_ids)
         return {"site_synthesis": synthesis.model_dump(), "communication_score": score}
 
     if step == "termos":
@@ -606,6 +614,8 @@ def run_audit_sync(
         audit_id=audit_id,
         delay_seconds=app_config["crawl"]["delay_seconds"],
         respect_robots=app_config["crawl"]["respect_robots"],
+        languages=list(app_config["crawl"].get("languages", ["pt"])),
+        max_analyzed_pages=app_config["crawl"].get("max_analyzed_pages", 12),
         tracking_pages=app_config["tracking"]["pages"],
         max_page_chars=app_config["llm"].get("max_page_chars", 4000),
         owner_services=list(app_config.get("owner_services", [])),

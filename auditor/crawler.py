@@ -45,13 +45,35 @@ PAGE_TYPE_KEYWORDS = {
     "contacto": ["contacto", "contactos", "contact"],
     "faq": ["faq", "perguntas-frequentes", "duvidas"],
     "landing": ["landing", "lp-", "promo"],
+    # Arquivos de blog (tags/categorias) e newsletter nunca têm nada a dizer sobre o negócio em
+    # si - são ruído puro para a análise de Comunicação (secção D.2), por isso são detetados
+    # antes do tipo genérico "blog"/"categoria".
+    "blog_arquivo": ["tag/", "tags/", "etiqueta/", "blog/category", "blog/categoria", "categorias-blog/", "newsletter"],
     "blog": ["blog", "noticias", "artigo", "news", "article"],
 }
-PRIORITY_ORDER = ["home", "servico", "produto", "categoria", "precos", "sobre", "contacto", "faq", "landing", "blog", "legal", "outro"]
+PRIORITY_ORDER = ["home", "servico", "produto", "categoria", "precos", "sobre", "contacto", "faq", "landing", "blog", "legal", "blog_arquivo", "outro"]
 # Prioridade usada em auditorias --fast (secção 9): páginas institucionais primeiro, o resto
 # (incluindo blog/legal) só depois de esgotar essas - nunca vale a pena gastar as poucas
 # páginas do modo rápido em conteúdo secundário.
-FAST_PRIORITY_ORDER = ["home", "servico", "sobre", "contacto", "produto", "categoria", "precos", "faq", "landing", "blog", "legal", "outro"]
+FAST_PRIORITY_ORDER = ["home", "servico", "sobre", "contacto", "produto", "categoria", "precos", "faq", "landing", "blog", "legal", "blog_arquivo", "outro"]
+# Tipos de página que nunca acrescentam nada à análise de Comunicação/pontuação (secção D.2):
+# páginas legais, notícias/artigos datados e arquivos de blog (tags/categorias) ou newsletter.
+NON_ANALYSIS_PAGE_TYPES = {"legal", "blog", "blog_arquivo"}
+# Páginas centrais ao funil de conversão (secção D.3): a pontuação de comunicação é a média
+# só destas, nunca de páginas institucionais/secundárias como FAQ.
+CONVERSION_PAGE_TYPES = {"home", "servico", "produto", "landing", "precos", "contacto"}
+# Prioridade para escolher, de entre as páginas rastreadas, quais analisar quando há mais do
+# que crawl.max_analyzed_pages (secção D.3).
+ANALYSIS_PRIORITY_ORDER = ["home", "servico", "produto", "sobre", "contacto", "precos", "categoria", "faq", "landing", "outro"]
+
+# Códigos de língua ISO 639-1 mais comuns em prefixos de URL (ex.: /en/, /fr/) - usados para
+# detetar versões noutra língua do mesmo conteúdo (secção D.1). Não é uma lista exaustiva de
+# todas as línguas do mundo, só das que costumam aparecer como prefixo de path em sites PT.
+COMMON_LANGUAGE_CODES = {
+    "en", "es", "fr", "de", "it", "nl", "pl", "ru", "zh", "ja", "ko", "ar",
+    "sv", "da", "no", "fi", "tr", "el", "cs", "ro", "hu", "uk",
+}
+LANGUAGE_PATH_PREFIX_RE = re.compile(r"^/([a-z]{2})(?:-[a-z]{2})?(/.*)?$", re.IGNORECASE)
 
 TESTIMONIAL_KEYWORDS = ["testimonial", "depoimento", "testemunho", "review"]
 BADGE_KEYWORDS = ["garantia", "satisfação garantida", "certificado", "selo", "iso 9001", "devolução gratuita"]
@@ -137,23 +159,63 @@ def page_priority(page_type: str, *, fast: bool = False) -> int:
         return len(order)
 
 
-EN_PREFIX_RE = re.compile(r"^/en(/.*)?$", re.IGNORECASE)
-
-
-def _drop_english_duplicates(pages: list[PageData]) -> list[PageData]:
-    """Ignora páginas /en/... quando a versão em português equivalente também foi rastreada
-    (secção 9): o mesmo conteúdo em inglês só duplicaria a análise de comunicação/perfil, sem
-    acrescentar nada, e este site é sempre auditado em PT-PT."""
+def _drop_foreign_language_duplicates(pages: list[PageData], *, languages: Optional[list[str]] = None) -> list[PageData]:
+    """Ignora /en/, /fr/, /de/, /es/... (secção D.1) quando a versão na língua principal do
+    site (config crawl.languages, por defeito ["pt"]) também foi rastreada: o mesmo conteúdo
+    noutra língua só duplicaria a análise de comunicação/perfil, sem acrescentar nada. Um
+    prefixo de path só conta como "outra língua" se for um código ISO 639-1 conhecido
+    (COMMON_LANGUAGE_CODES) - nunca um segmento de path qualquer de duas letras."""
+    primary_languages = {lang.lower() for lang in (languages or ["pt"])}
     known_paths = {urlparse(p.url).path or "/" for p in pages}
 
-    def _has_pt_equivalent(path: str) -> bool:
-        match = EN_PREFIX_RE.match(path)
+    def _has_primary_language_equivalent(path: str) -> bool:
+        match = LANGUAGE_PATH_PREFIX_RE.match(path)
         if not match:
             return False
-        pt_path = match.group(1) or "/"
-        return pt_path in known_paths
+        lang = match.group(1).lower()
+        if lang in primary_languages or lang not in COMMON_LANGUAGE_CODES:
+            return False
+        primary_path = match.group(2) or "/"
+        return primary_path in known_paths
 
-    return [p for p in pages if not _has_pt_equivalent(urlparse(p.url).path or "/")]
+    return [p for p in pages if not _has_primary_language_equivalent(urlparse(p.url).path or "/")]
+
+
+def _dedupe_pages_by_title_and_content(pages: list[PageData]) -> list[PageData]:
+    """Deduplica por título e conteúdo (secção D.2): duas páginas com o mesmo título e o mesmo
+    início de texto principal são a mesma página em duplicado (paginação, parâmetros, etc.)."""
+    seen: set[tuple[str, str]] = set()
+    result: list[PageData] = []
+    for page in pages:
+        title = (page.title or "").strip().lower()
+        key = (title, (page.main_text or "")[:200].strip().lower())
+        # Sem título nenhum não há sinal suficiente para decidir que é duplicada - mantém-la
+        # sempre em vez de arriscar colapsar páginas distintas só porque nenhuma tem título.
+        if title and key in seen:
+            continue
+        if title:
+            seen.add(key)
+        result.append(page)
+    return result
+
+
+def _analysis_priority(page_type: str) -> int:
+    try:
+        return ANALYSIS_PRIORITY_ORDER.index(page_type)
+    except ValueError:
+        return len(ANALYSIS_PRIORITY_ORDER)
+
+
+def select_pages_for_analysis(pages: list[PageData], *, max_analyzed_pages: int = 12) -> list[PageData]:
+    """Páginas enviadas à Comunicação/Perfil/Anúncios (secção D.2/D.3): exclui páginas legais,
+    notícias/artigos datados e arquivos de blog/newsletter, deduplica por título+conteúdo, e
+    cobra no máximo `max_analyzed_pages`, priorizando home/serviços/produtos/sobre/contacto.
+    Nunca devolve uma lista vazia enquanto existir pelo menos uma página rastreada."""
+    candidates = _dedupe_pages_by_title_and_content([p for p in pages if p.type not in NON_ANALYSIS_PAGE_TYPES])
+    if not candidates:
+        candidates = _dedupe_pages_by_title_and_content(pages)
+    ordered = sorted(candidates, key=lambda p: (_analysis_priority(p.type), p.url))
+    return ordered[:max_analyzed_pages]
 
 
 def _slugify(url: str) -> str:
@@ -317,6 +379,7 @@ async def crawl_site(
     refresh: bool = False,
     browser: Optional[Browser] = None,
     fast: bool = False,
+    languages: Optional[list[str]] = None,
 ) -> CrawlResult:
     """Discover and extract up to `max_pages` same-domain pages, starting from `start_url`.
 
@@ -411,4 +474,4 @@ async def crawl_site(
             finally:
                 await owned_browser.close()
 
-    return CrawlResult(domain=domain, pages=_drop_english_duplicates(pages), errors=errors)
+    return CrawlResult(domain=domain, pages=_drop_foreign_language_duplicates(pages, languages=languages), errors=errors)

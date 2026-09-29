@@ -1,6 +1,15 @@
 import pytest
 
-from auditor.crawler import PageData, _drop_english_duplicates, classify_page_type, crawl_site, normalize_url, page_priority, should_skip_url
+from auditor.crawler import (
+    PageData,
+    _drop_foreign_language_duplicates,
+    classify_page_type,
+    crawl_site,
+    normalize_url,
+    page_priority,
+    select_pages_for_analysis,
+    should_skip_url,
+)
 
 
 def test_normalize_url_drops_query_string_fragment_and_trailing_slash():
@@ -43,24 +52,88 @@ def _page(page_id: str, url: str) -> PageData:
     return PageData(id=page_id, url=url, type=classify_page_type(url))
 
 
-def test_drop_english_duplicates_removes_en_pages_that_have_a_pt_equivalent():
+def test_drop_foreign_language_duplicates_removes_en_pages_that_have_a_pt_equivalent():
     pages = [
         _page("home", "https://example.pt/"),
         _page("en-home", "https://example.pt/en"),
         _page("servicos", "https://example.pt/servicos"),
         _page("en-servicos", "https://example.pt/en/servicos"),
     ]
-    result = _drop_english_duplicates(pages)
+    result = _drop_foreign_language_duplicates(pages)
     assert [p.id for p in result] == ["home", "servicos"]
 
 
-def test_drop_english_duplicates_keeps_an_en_page_with_no_pt_equivalent():
+def test_drop_foreign_language_duplicates_keeps_an_en_page_with_no_pt_equivalent():
     pages = [
         _page("home", "https://example.pt/"),
         _page("en-only", "https://example.pt/en/only-in-english"),
     ]
-    result = _drop_english_duplicates(pages)
+    result = _drop_foreign_language_duplicates(pages)
     assert [p.id for p in result] == ["home", "en-only"]
+
+
+def test_drop_foreign_language_duplicates_handles_fr_de_es_and_respects_primary_languages():
+    pages = [
+        _page("home", "https://example.pt/"),
+        _page("fr-home", "https://example.pt/fr"),
+        _page("de-home", "https://example.pt/de"),
+        _page("es-home", "https://example.pt/es"),
+        _page("servicos", "https://example.pt/servicos"),
+        _page("fr-servicos", "https://example.pt/fr/servicos"),
+    ]
+    result = _drop_foreign_language_duplicates(pages, languages=["pt"])
+    assert [p.id for p in result] == ["home", "servicos"]
+
+
+def test_drop_foreign_language_duplicates_never_treats_a_random_two_letter_path_as_a_language():
+    pages = [
+        _page("home", "https://example.pt/"),
+        _page("ab-page", "https://example.pt/ab/something"),
+    ]
+    result = _drop_foreign_language_duplicates(pages)
+    assert [p.id for p in result] == ["home", "ab-page"]  # "ab" não é um código de língua conhecido
+
+
+def test_select_pages_for_analysis_excludes_legal_blog_and_newsletter():
+    pages = [
+        _page("home", "https://example.pt/"),
+        _page("legal", "https://example.pt/politica-de-privacidade"),
+        _page("blog-post", "https://example.pt/blog/noticia-1"),
+        _page("blog-tag", "https://example.pt/blog/tag/ofertas"),
+        _page("newsletter", "https://example.pt/newsletter"),
+        _page("servicos", "https://example.pt/servicos"),
+    ]
+    result = select_pages_for_analysis(pages)
+    assert {p.id for p in result} == {"home", "servicos"}
+
+
+def test_select_pages_for_analysis_dedupes_by_title_and_content():
+    a = PageData(id="a", url="https://example.pt/a", type="servico", title="Serviço X", main_text="Texto igual em ambas as páginas.")
+    b = PageData(id="b", url="https://example.pt/a?utm=x", type="servico", title="Serviço X", main_text="Texto igual em ambas as páginas.")
+    result = select_pages_for_analysis([a, b])
+    assert len(result) == 1
+
+
+def test_select_pages_for_analysis_caps_and_prioritises_institutional_pages():
+    pages = [
+        _page("faq", "https://example.pt/faq"),
+        _page("contacto", "https://example.pt/contacto"),
+        _page("sobre", "https://example.pt/sobre-nos"),
+        _page("produto", "https://example.pt/produtos/x"),
+        _page("servicos", "https://example.pt/servicos"),
+        _page("home", "https://example.pt/"),
+    ]
+    result = select_pages_for_analysis(pages, max_analyzed_pages=3)
+    assert len(result) == 3
+    # home, servico e produto vêm antes de sobre/contacto/faq na prioridade de análise
+    # (secção D.3: "home, serviços, produtos, sobre e contacto").
+    assert {p.id for p in result} == {"home", "servicos", "produto"}
+
+
+def test_select_pages_for_analysis_never_returns_empty_when_pages_exist():
+    pages = [_page("legal", "https://example.pt/politica-de-privacidade")]
+    result = select_pages_for_analysis(pages)
+    assert len(result) == 1
 
 
 def _write(path, content):

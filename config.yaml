@@ -45,6 +45,13 @@ crawl:
   max_pages: 25
   delay_seconds: 1.5
   respect_robots: true
+  # Só a(s) língua(s) principal(is) do site (secção D.1): páginas /en/, /fr/, /de/... são
+  # ignoradas quando existir uma página equivalente numa destas línguas.
+  languages: ["pt"]
+  # Sem --fast, no máximo estas páginas vão para a análise de Comunicação/Perfil/Anúncios,
+  # mesmo que o crawl tenha descoberto mais (secção D.3) - prioriza home/serviços/produtos/
+  # sobre/contacto.
+  max_analyzed_pages: 12
 
 tracking:
   pages: 4

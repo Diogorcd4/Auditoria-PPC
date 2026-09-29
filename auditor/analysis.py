@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -142,10 +142,16 @@ async def analyze_page(llm: LLMClient, page: PageData, *, model: str = "", max_c
     return result
 
 
-def compute_communication_score(pages: list[PageCommunication]) -> int:
+def compute_communication_score(pages: list[PageCommunication], *, conversion_page_ids: Optional[set[str]] = None) -> int:
     """Computed in Python, not by the LLM (secção 4.3): forte=1, fraco=0.5, ausente=0,
-    averaged over every applicable (not nao_aplicavel) category across every page."""
-    scores = [LEVEL_SCORE[cat.level] for page in pages for cat in page.categories.values() if cat.level in LEVEL_SCORE]
+    averaged over every applicable (not nao_aplicavel) category. When `conversion_page_ids`
+    is given and non-empty, only those pages count (secção D.3): the score reflects the pages
+    central to the conversion funnel, not every analysed page (a FAQ or "sobre" page scoring
+    low shouldn't drag down a site whose actual sales pages are strong)."""
+    scoped_pages = pages
+    if conversion_page_ids:
+        scoped_pages = [p for p in pages if p.page_id in conversion_page_ids] or pages
+    scores = [LEVEL_SCORE[cat.level] for page in scoped_pages for cat in page.categories.values() if cat.level in LEVEL_SCORE]
     if not scores:
         return 0
     return round(sum(scores) / len(scores) * 100)

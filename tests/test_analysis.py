@@ -62,6 +62,45 @@ def test_compute_communication_score_is_zero_with_no_pages():
     assert compute_communication_score([]) == 0
 
 
+def test_compute_communication_score_only_averages_conversion_pages_when_given():
+    from auditor.analysis import CategoryAnalysis, CTAAnalysis, PageCommunication
+
+    def _one_category_page(page_id, level):
+        return PageCommunication(
+            page_id=page_id,
+            categories={
+                "problemas": CategoryAnalysis(level=level, evidence="e", recommendation="r"),
+                "caracteristicas": CategoryAnalysis(level="nao_aplicavel", evidence="e", recommendation="r"),
+                "motivos_para_comprar": CategoryAnalysis(level="nao_aplicavel", evidence="e", recommendation="r"),
+                "objeccoes_e_receios": CategoryAnalysis(level="nao_aplicavel", evidence="e", recommendation="r"),
+                "desejos": CategoryAnalysis(level="nao_aplicavel", evidence="e", recommendation="r"),
+                "crencas_e_mentalidade": CategoryAnalysis(level="nao_aplicavel", evidence="e", recommendation="r"),
+                "oportunidades": CategoryAnalysis(level="nao_aplicavel", evidence="e", recommendation="r"),
+            },
+            cta_analysis=CTAAnalysis(clarity="forte", position="topo", note="n"),
+        )
+
+    home = _one_category_page("home", "forte")  # 100
+    faq = _one_category_page("faq", "ausente")  # 0
+
+    # sem conversion_page_ids: a média inclui as duas páginas (secção D.3, comportamento antigo)
+    assert compute_communication_score([home, faq]) == 50
+    # com conversion_page_ids={"home"}: a FAQ fraca não arrasta a pontuação para baixo
+    assert compute_communication_score([home, faq], conversion_page_ids={"home"}) == 100
+
+
+def test_compute_communication_score_falls_back_to_all_pages_when_conversion_ids_match_none():
+    from auditor.analysis import CategoryAnalysis, CTAAnalysis, PageCommunication
+
+    page = PageCommunication(
+        page_id="faq",
+        categories={key: CategoryAnalysis(level="ausente", evidence="e", recommendation="r") for key in CATEGORY_KEYS},
+        cta_analysis=CTAAnalysis(clarity="fraco", position="rodapé", note="n"),
+    )
+    # conversion_page_ids não vazio mas sem correspondência nenhuma -> nunca fica sem pontuação
+    assert compute_communication_score([page], conversion_page_ids={"home"}) == 0
+
+
 @pytest.mark.asyncio
 async def test_synthesize_site_drops_insights_citing_an_unknown_page_id():
     llm = MockLLMClient(fixtures=FIXTURES)
