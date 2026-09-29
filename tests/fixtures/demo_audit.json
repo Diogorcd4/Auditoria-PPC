@@ -12,7 +12,8 @@
     "tracking_platforms_total": 6,
     "opportunities_count": 7,
     "ads_valid_count": 83,
-    "ads_total_count": 86
+    "ads_total_count": 86,
+    "tracking_platforms_firing": 1
   },
   "summary": {
     "strengths": [
@@ -222,7 +223,13 @@
       }
     ],
     "ecommerce_events_in_datalayer": [],
-    "not_visible_note": "Esta ferramenta não vê tagging do lado do servidor (server-side tagging), a Conversions API do Meta, nem a configuração feita dentro das contas de Google Ads, Meta Ads ou Microsoft Advertising."
+    "not_visible_note": "Esta ferramenta não vê tagging do lado do servidor (server-side tagging), a Conversions API do Meta, nem a configuração feita dentro das contas de Google Ads, Meta Ads ou Microsoft Advertising.",
+    "consent_interaction": {
+      "cmp": "Não identificada (banner próprio, sem CMP reconhecida)",
+      "banner_found": true,
+      "click_attempted": true,
+      "click_had_effect": true
+    }
   },
   "communication": {
     "pages": [

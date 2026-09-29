@@ -170,9 +170,20 @@ def count_ads_assets(ads: dict[str, Any]) -> tuple[int, int]:
     return valid, total
 
 
+FIRING_STATES = {"A disparar sem consentimento", "A disparar só após consentimento"}
+
+
 def _tracking_platforms_detected(tracking: dict) -> int:
+    """"Detetadas" conta o que está no código OU a disparar (secção C.2) - nunca só o que
+    dispara, para nunca coincidir com _tracking_platforms_firing por definição."""
     core = sum(1 for key in ("ga4", "gtm", "meta_pixel", "google_ads", "microsoft_uet") if tracking[key]["detected"])
     return core + (1 if tracking["consent_mode"]["detected"] else 0)
+
+
+def _tracking_platforms_firing(tracking: dict) -> int:
+    """Subconjunto das detetadas que também disparam de facto (secção C.2), mostrado
+    separadamente para nunca confundir "está no código" com "está a disparar"."""
+    return sum(1 for key in ("ga4", "google_ads", "meta_pixel", "microsoft_uet") if tracking[key]["state"] in FIRING_STATES)
 
 
 def _assemble_report(context: dict[str, Any], config: PipelineConfig, duration_seconds: float) -> dict:
@@ -201,6 +212,7 @@ def _assemble_report(context: dict[str, Any], config: PipelineConfig, duration_s
         "pages_analyzed": len(pages),
         "pages_analyzed_ok": comunicacao.get("pages_ok", len(comunicacao.get("pages", []))),
         "tracking_platforms_detected": _tracking_platforms_detected(tracking),
+        "tracking_platforms_firing": _tracking_platforms_firing(tracking),
         "tracking_platforms_total": 6,
         "opportunities_count": len(opportunities),
         "ads_valid_count": ads_valid_count,

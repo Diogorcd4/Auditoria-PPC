@@ -85,11 +85,12 @@ export function renderTracking(audit) {
   const t = audit.tracking;
   const section = el("section", { class: "section-block", id: "sec-tracking" });
   const detectedCount = audit.meta.tracking_platforms_detected;
+  const firingCount = audit.meta.tracking_platforms_firing;
   section.append(
     el("div", { class: "section-head" }, [
       el("div", { class: "eyebrow" }, "Tracking"),
       el("h2", { class: "section-title" }, "O que já está instalado"),
-      el("p", { class: "section-summary" }, `${detectedCount} de ${audit.meta.tracking_platforms_total} plataformas detetadas.`),
+      el("p", { class: "section-summary" }, `${detectedCount} de ${audit.meta.tracking_platforms_total} plataformas detetadas (no código ou a disparar) — ${firingCount} a disparar de facto.`),
     ])
   );
 
@@ -98,6 +99,21 @@ export function renderTracking(audit) {
     if (t[key]) grid.appendChild(trackingCard(key, t[key]));
   }
   section.appendChild(grid);
+
+  if (t.consent_interaction) {
+    const ci = t.consent_interaction;
+    const lines = [];
+    lines.push(ci.banner_found ? `CMP identificada: ${ci.cmp}.` : "Não foi encontrado nenhum banner de consentimento de cookies no site.");
+    if (ci.banner_found) {
+      lines.push(ci.click_attempted ? (ci.click_had_effect ? "O clique em \"Aceitar\" teve efeito visível no tracking (novos pedidos após o clique)." : "O clique em \"Aceitar\" foi feito, mas não se observou nenhum novo pedido de tracking depois.") : "O banner foi encontrado mas não foi possível clicar em \"Aceitar\".");
+    }
+    section.appendChild(
+      el("div", { class: "card", style: "margin-top:16px;font-size:0.85rem" }, [
+        el("h3", { style: "font-size:0.9rem;margin-bottom:8px" }, "Consentimento de cookies"),
+        el("div", { style: "display:flex;flex-direction:column;gap:4px;color:var(--muted)" }, lines.map((l) => el("div", {}, l))),
+      ])
+    );
+  }
 
   if (t.extras?.length) {
     const extrasCard = el("div", { class: "card", style: "margin-top:16px" }, [

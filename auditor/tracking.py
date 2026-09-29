@@ -83,6 +83,7 @@ class _RequestLog:
         self.before: list[str] = []
         self.after: list[str] = []
         self.consent_given = False
+        self.click_attempted = False
 
     def record(self, url: str) -> None:
         (self.after if self.consent_given else self.before).append(url)
@@ -163,6 +164,7 @@ def empty_report() -> dict:
         "microsoft_uet": {"platform": "Microsoft Advertising (UET)", **not_detected},
         "consent_mode": {"detected": False, "state": "Não detetado"},
         "cmp": {"name": "Não detetado", "cookie_banner_detected": False},
+        "consent_interaction": {"cmp": "Não detetado", "banner_found": False, "click_attempted": False, "click_had_effect": False},
         "extras": [{"platform": name, "detected": False, "state": "Não detetado"} for name, _ in EXTRA_SIGNATURES],
         "ecommerce_events_in_datalayer": [],
         "not_visible_note": NOT_VISIBLE_NOTE,
@@ -206,6 +208,10 @@ async def detect_tracking(page: Page, url: str, *, consent_selectors: Optional[l
             try:
                 if await locator.count() == 0 or not await locator.first.is_visible():
                     continue
+                # Marcado antes do clique (não depois) de propósito: um pedido disparado
+                # sincronamente pelo próprio onclick do botão tem de ficar bucketed como
+                # "após consentimento", mesmo que chegue à nossa rota antes de click() devolver.
+                log.click_attempted = True
                 log.consent_given = True
                 await locator.first.click(timeout=3000)
                 await page.wait_for_timeout(600)
@@ -236,8 +242,11 @@ def _build_report(html: str, runtime: dict, log: _RequestLog, loaded: dict[str, 
     def state_for(platform: str, loaded_flag: bool) -> str:
         return _consent_state(bool(before_by_platform.get(platform)), bool(after_by_platform.get(platform)), loaded_flag)
 
-    def evidence_for(platform: str, extra: Optional[list[str]] = None) -> list[str]:
-        return _evidence_lines(before_by_platform.get(platform, []) + after_by_platform.get(platform, []), extra)
+    def evidence_for(platform: str, *, state: str = "", id_value: Optional[str] = None, extra: Optional[list[str]] = None) -> list[str]:
+        lines = _evidence_lines(before_by_platform.get(platform, []) + after_by_platform.get(platform, []), extra)
+        if not lines and state == "No código, sem disparo observado":
+            lines = [f"Tag presente no código (ID {id_value or '?'}) mas sem disparo observado; confirmar se depende de um consentimento não reconhecido."]
+        return lines
 
     ga4_loaded_in_code = bool(ga4_ids) or bool(loaded.get("gtag")) or runtime.get("dataLayerLength") is not None
     ua_loaded_in_code = bool(ua_ids) or bool(loaded.get("ua_analytics_js")) or runtime.get("hasGa")
@@ -245,20 +254,37 @@ def _build_report(html: str, runtime: dict, log: _RequestLog, loaded: dict[str, 
     fbq_loaded_in_code = bool(fbq_ids) or bool(loaded.get("fbevents")) or runtime.get("hasFbq")
     uet_loaded_in_code = bool(loaded.get("uet_bat")) or runtime.get("hasUetq")
 
+    # "detected" é sempre exactamente "state != 'Não detetado'" (secção C.1): nunca deve ser
+    # possível um estado "No código, sem disparo observado" coexistir com detected=False, o
+    # que geraria uma oportunidade a dizer "nenhuma tag detetada" para uma tag que está lá.
+    ga4_state = state_for("ga4", ga4_loaded_in_code)
+    ua_state = state_for("ua", ua_loaded_in_code)
+    google_ads_state = state_for("google_ads", aw_loaded_in_code)
+    meta_pixel_state = state_for("meta_pixel", fbq_loaded_in_code)
+    microsoft_uet_state = state_for("microsoft_uet", uet_loaded_in_code)
+
+    cmp = _detect_cmp(html)
+    consent_interaction = {
+        "cmp": cmp["name"],
+        "banner_found": cmp["cookie_banner_detected"],
+        "click_attempted": log.click_attempted,
+        "click_had_effect": log.click_attempted and bool(log.after),
+    }
+
     report: dict = {
         "ga4": {
             "platform": "Google Analytics 4",
-            "detected": bool(ga4_ids) or bool(before_by_platform.get("ga4")) or bool(after_by_platform.get("ga4")),
+            "detected": ga4_state != "Não detetado",
             "id": ga4_ids[0] if ga4_ids else None,
-            "state": state_for("ga4", ga4_loaded_in_code),
-            "evidence": evidence_for("ga4"),
+            "state": ga4_state,
+            "evidence": evidence_for("ga4", state=ga4_state, id_value=ga4_ids[0] if ga4_ids else None),
         },
         "ua": {
             "platform": "Universal Analytics",
-            "detected": bool(ua_ids) or bool(before_by_platform.get("ua")) or bool(after_by_platform.get("ua")),
+            "detected": ua_state != "Não detetado",
             "id": ua_ids[0] if ua_ids else None,
-            "state": state_for("ua", ua_loaded_in_code),
-            "evidence": evidence_for("ua"),
+            "state": ua_state,
+            "evidence": evidence_for("ua", state=ua_state, id_value=ua_ids[0] if ua_ids else None),
         },
         "gtm": {
             "platform": "Google Tag Manager",
@@ -269,31 +295,32 @@ def _build_report(html: str, runtime: dict, log: _RequestLog, loaded: dict[str, 
         },
         "google_ads": {
             "platform": "Google Ads",
-            "detected": bool(aw_ids) or bool(before_by_platform.get("google_ads")) or bool(after_by_platform.get("google_ads")),
+            "detected": google_ads_state != "Não detetado",
             "id": aw_ids[0] if aw_ids else None,
-            "state": state_for("google_ads", aw_loaded_in_code),
-            "evidence": evidence_for("google_ads"),
+            "state": google_ads_state,
+            "evidence": evidence_for("google_ads", state=google_ads_state, id_value=aw_ids[0] if aw_ids else None),
         },
         "meta_pixel": {
             "platform": "Meta Pixel",
-            "detected": bool(fbq_ids) or bool(before_by_platform.get("meta_pixel")) or bool(after_by_platform.get("meta_pixel")),
+            "detected": meta_pixel_state != "Não detetado",
             "id": fbq_ids[0] if fbq_ids else None,
-            "state": state_for("meta_pixel", fbq_loaded_in_code),
-            "evidence": evidence_for("meta_pixel"),
+            "state": meta_pixel_state,
+            "evidence": evidence_for("meta_pixel", state=meta_pixel_state, id_value=fbq_ids[0] if fbq_ids else None),
             "events_observed": _meta_events(before_by_platform.get("meta_pixel", []) + after_by_platform.get("meta_pixel", [])),
         },
         "microsoft_uet": {
             "platform": "Microsoft Advertising (UET)",
-            "detected": bool(before_by_platform.get("microsoft_uet")) or bool(after_by_platform.get("microsoft_uet")) or uet_loaded_in_code,
+            "detected": microsoft_uet_state != "Não detetado",
             "id": None,
-            "state": state_for("microsoft_uet", uet_loaded_in_code),
-            "evidence": evidence_for("microsoft_uet"),
+            "state": microsoft_uet_state,
+            "evidence": evidence_for("microsoft_uet", state=microsoft_uet_state, id_value="UET"),
         },
         "consent_mode": {
             "detected": _consent_mode_detected(log.before + log.after),
             "state": "Detetado" if _consent_mode_detected(log.before + log.after) else "Não detetado",
         },
-        "cmp": _detect_cmp(html),
+        "cmp": cmp,
+        "consent_interaction": consent_interaction,
         "extras": [
             {"platform": name, "detected": bool(pattern.search(html)), "state": "Detetado" if pattern.search(html) else "Não detetado"}
             for name, pattern in EXTRA_SIGNATURES
@@ -341,6 +368,10 @@ def merge_reports(reports: list[dict]) -> dict:
         "state": "Detetado" if any(r["consent_mode"]["detected"] for r in reports) else "Não detetado",
     }
     merged["cmp"] = next((r["cmp"] for r in reports if r["cmp"]["cookie_banner_detected"]), reports[0]["cmp"])
+    merged["consent_interaction"] = next(
+        (r["consent_interaction"] for r in reports if r.get("consent_interaction", {}).get("banner_found")),
+        reports[0].get("consent_interaction", {"cmp": merged["cmp"]["name"], "banner_found": False, "click_attempted": False, "click_had_effect": False}),
+    )
 
     extras_by_platform: dict[str, bool] = defaultdict(bool)
     for r in reports:
